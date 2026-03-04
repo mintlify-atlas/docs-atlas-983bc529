@@ -390,3 +390,49 @@ import type {
 ```
 
 For the complete list of available types, see the [Telegram Bot API documentation](https://core.telegram.org/bots/api) and the [grammY types repository](https://github.com/grammyjs/types).
+
+## API Constants
+
+grammY exports useful constants for working with the Bot API.
+
+### DEFAULT_UPDATE_TYPES
+
+List of update types a bot receives by default (excludes `chat_member`, `message_reaction`, and `message_reaction_count`).
+
+```typescript
+import { DEFAULT_UPDATE_TYPES } from "grammy";
+
+// With long polling
+bot.start({ allowed_updates: DEFAULT_UPDATE_TYPES });
+
+// With webhooks
+await bot.api.setWebhook(url, { allowed_updates: DEFAULT_UPDATE_TYPES });
+```
+
+### ALL_UPDATE_TYPES
+
+List of all available update types, including those not delivered by default.
+
+```typescript
+import { ALL_UPDATE_TYPES } from "grammy";
+
+// Receive all update types
+bot.start({ allowed_updates: ALL_UPDATE_TYPES });
+```
+
+### ALL_CHAT_PERMISSIONS
+
+An object containing all chat permissions set to `true`. Useful for lifting all restrictions from a user.
+
+```typescript
+import { ALL_CHAT_PERMISSIONS } from "grammy";
+
+// Lift all restrictions
+await ctx.restrictChatMember(userId, ALL_CHAT_PERMISSIONS);
+```
+
+## See Also
+
+- [Filter Types](/api/filter-types) - Type narrowing with filter queries
+- [Middleware Types](/api/middleware-types) - Middleware function signatures
+- [Context](/api/context) - The context object
