@@ -1,0 +1,378 @@
+---
+title: 'Bot'
+description: 'The Bot class is the heart of your grammY application'
+---
+
+The `Bot` class is the single most important class in grammY. It represents your bot and handles all communication with Telegram.
+
+## Creating a Bot
+
+To create a bot, you need a bot token from [@BotFather](https://t.me/BotFather). Once you have your token, instantiate a new `Bot`:
+
+```typescript
+import { Bot } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+```
+
+<Warning>
+Never commit your bot token to version control. Use environment variables instead:
+```typescript
+const bot = new Bot(process.env.BOT_TOKEN)
+```
+</Warning>
+
+## Configuration Options
+
+The `Bot` constructor accepts optional configuration through the `BotConfig` interface:
+
+<ParamField path="config.client" type="ApiClientOptions">
+  Advanced options for the API client that connects to Telegram's servers
+</ParamField>
+
+<ParamField path="config.botInfo" type="UserFromGetMe">
+  Pre-initialize the bot with cached bot information to skip the initial `getMe` call. Useful for serverless environments where you restart frequently.
+</ParamField>
+
+<ParamField path="config.ContextConstructor" type="Constructor">
+  Pass a custom context class constructor to use instead of the default `Context` class
+</ParamField>
+
+### Example with Configuration
+
+```typescript
+const bot = new Bot('YOUR_BOT_TOKEN', {
+  client: {
+    timeoutSeconds: 60,
+  },
+  botInfo: {
+    // Cached bot info from previous run
+    id: 123456789,
+    username: 'my_bot',
+    // ... other fields
+  }
+})
+```
+
+## Bot API Access
+
+The bot provides full access to the Telegram Bot API through the `api` property:
+
+```typescript
+// Send a message
+await bot.api.sendMessage(chatId, 'Hello from grammY!')
+
+// Get bot information
+const me = await bot.api.getMe()
+console.log(`Bot username: ${me.username}`)
+```
+
+<Note>
+Inside middleware, prefer using `ctx.api` instead of `bot.api`. The context API has the same methods but may include additional features like webhook reply envelopes.
+</Note>
+
+## Registering Middleware
+
+The `Bot` class extends `Composer`, giving you access to all middleware registration methods:
+
+```typescript
+// Listen for all messages
+bot.on('message', ctx => ctx.reply('Got your message!'))
+
+// Listen for text messages only
+bot.on('message:text', ctx => {
+  console.log('Text:', ctx.message.text)
+})
+
+// Listen for specific commands
+bot.command('start', ctx => {
+  ctx.reply('Welcome! Use /help to see available commands.')
+})
+
+// Use general middleware
+bot.use(async (ctx, next) => {
+  console.log('Update received:', ctx.update.update_id)
+  await next()
+})
+```
+
+See [Middleware](/concepts/middleware) and [Filter Queries](/concepts/filter-queries) for more details.
+
+## Running Your Bot
+
+grammY provides a simple built-in long polling method:
+
+```typescript
+// Start the bot
+await bot.start()
+```
+
+The `start()` method accepts options:
+
+<ParamField path="options.limit" type="number" default="100">
+  Number of updates to fetch per request (1-100)
+</ParamField>
+
+<ParamField path="options.timeout" type="number" default="30">
+  Timeout in seconds for long polling
+</ParamField>
+
+<ParamField path="options.allowed_updates" type="string[]">
+  Array of update types to receive. If not specified, receives all updates except `chat_member`, `message_reaction`, and `message_reaction_count`.
+</ParamField>
+
+<ParamField path="options.drop_pending_updates" type="boolean">
+  Pass `true` to drop all pending updates before starting
+</ParamField>
+
+<ParamField path="options.onStart" type="function">
+  Callback function executed after setup completes, before fetching updates. Receives `bot.botInfo` as an argument.
+</ParamField>
+
+### Example with Options
+
+```typescript
+await bot.start({
+  allowed_updates: ['message', 'callback_query'],
+  drop_pending_updates: true,
+  onStart: (botInfo) => {
+    console.log(`Bot @${botInfo.username} started!`)
+  }
+})
+```
+
+<Note>
+The built-in `bot.start()` is designed for small to medium bots. For high-load production bots (>5K messages/hour), use the [`@grammyjs/runner`](https://grammy.dev/plugins/runner) package for better performance.
+</Note>
+
+## Stopping the Bot
+
+To gracefully stop long polling:
+
+```typescript
+await bot.stop()
+```
+
+This will:
+1. Cancel the current `getUpdates` request
+2. Prevent further `getUpdates` calls
+3. Confirm the last received update to Telegram
+
+## Bot Information
+
+Access information about your bot through the `botInfo` property:
+
+```typescript
+// Available after initialization
+console.log(bot.botInfo.username)
+console.log(bot.botInfo.first_name)
+console.log(bot.botInfo.id)
+```
+
+<Warning>
+The `botInfo` property is only available after calling `await bot.init()` or `bot.start()`. Accessing it before initialization throws an error.
+</Warning>
+
+### Manual Initialization
+
+If you're not using `bot.start()`, initialize the bot manually:
+
+```typescript
+await bot.init()
+console.log(`Bot initialized: ${bot.botInfo.username}`)
+```
+
+## Error Handling
+
+Set an error handler to catch errors in middleware:
+
+```typescript
+bot.catch((err) => {
+  const ctx = err.ctx
+  console.error(`Error while handling update ${ctx.update.update_id}:`)
+  const e = err.error
+  
+  if (e instanceof GrammyError) {
+    console.error('Error in request:', e.description)
+  } else if (e instanceof HttpError) {
+    console.error('Could not contact Telegram:', e)
+  } else {
+    console.error('Unknown error:', e)
+  }
+})
+```
+
+See [Error Handling](/concepts/error-handling) for comprehensive error handling strategies.
+
+## Update Processing
+
+### Handling Updates Manually
+
+For webhooks or custom update sources, use `handleUpdate()`:
+
+```typescript
+// In a webhook handler
+app.post('/webhook', async (req, res) => {
+  await bot.handleUpdate(req.body)
+  res.sendStatus(200)
+})
+```
+
+### Update Flow
+
+When an update arrives:
+1. Bot creates a new `Api` instance with the bot token
+2. Bot constructs a `Context` object with the update, API, and bot info
+3. Bot runs the middleware stack with the context
+4. Any errors are caught and passed to the error handler
+
+```typescript
+// This is what happens internally (simplified)
+async handleUpdate(update: Update) {
+  const api = new Api(this.token, this.clientConfig)
+  const ctx = new this.ContextConstructor(update, api, this.me)
+  
+  try {
+    await run(this.middleware(), ctx)
+  } catch (err) {
+    throw new BotError(err, ctx)
+  }
+}
+```
+
+## Lifecycle Methods
+
+### Check if Running
+
+```typescript
+if (bot.isRunning()) {
+  console.log('Bot is currently polling')
+}
+```
+
+### Check if Initialized
+
+```typescript
+if (bot.isInited()) {
+  console.log('Bot info available')
+}
+```
+
+## Default Update Types
+
+By default, grammY requests these update types:
+
+```typescript
+const DEFAULT_UPDATE_TYPES = [
+  'message',
+  'edited_message',
+  'channel_post',
+  'edited_channel_post',
+  'business_connection',
+  'business_message',
+  'edited_business_message',
+  'deleted_business_messages',
+  'inline_query',
+  'chosen_inline_result',
+  'callback_query',
+  'shipping_query',
+  'pre_checkout_query',
+  'purchased_paid_media',
+  'poll',
+  'poll_answer',
+  'my_chat_member',
+  'chat_join_request',
+  'chat_boost',
+  'removed_chat_boost',
+]
+```
+
+<Warning>
+If you register listeners for update types not in `allowed_updates`, grammY will warn you. Always include the update types you need:
+
+```typescript
+bot.on('message_reaction', ctx => { /* ... */ })
+
+await bot.start({
+  allowed_updates: ['message', 'message_reaction'] // Include it!
+})
+```
+</Warning>
+
+## Type Safety
+
+The `Bot` class is generic, allowing custom context types:
+
+```typescript
+import { Bot, Context } from 'grammy'
+
+interface MyContext extends Context {
+  session: { count: number }
+}
+
+const bot = new Bot<MyContext>('TOKEN')
+
+bot.use((ctx) => {
+  // ctx is typed as MyContext
+  ctx.session.count++
+})
+```
+
+You can also customize the API type:
+
+```typescript
+import { Bot, Context, Api } from 'grammy'
+
+const bot = new Bot<Context, Api>('TOKEN')
+```
+
+## Best Practices
+
+<Tip>
+**Development vs Production**
+
+For development:
+```typescript
+await bot.start()
+```
+
+For production with high load:
+```typescript
+import { run } from '@grammyjs/runner'
+
+run(bot)
+```
+</Tip>
+
+<Tip>
+**Graceful Shutdown**
+
+```typescript
+process.once('SIGINT', () => bot.stop())
+process.once('SIGTERM', () => bot.stop())
+
+await bot.start()
+```
+</Tip>
+
+<Tip>
+**Error Handling is Required**
+
+Always set an error handler before starting your bot:
+```typescript
+bot.catch((err) => {
+  console.error('Bot error:', err)
+})
+
+await bot.start()
+```
+
+Without an error handler, unhandled errors will crash your bot.
+</Tip>
+
+## Related
+
+- [Context](/concepts/context) - Learn about context objects
+- [Middleware](/concepts/middleware) - Understanding middleware
+- [Error Handling](/concepts/error-handling) - Comprehensive error handling
+- [Filter Queries](/concepts/filter-queries) - Filtering updates efficiently

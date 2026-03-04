@@ -1,0 +1,356 @@
+---
+title: Filter Types
+description: Type-safe filtering system for context narrowing in grammY
+---
+
+Filter types enable powerful type narrowing in grammY. When you use filter queries with `bot.on()`, TypeScript automatically narrows the context type to guarantee certain properties exist.
+
+## Filter\<C, Q\>
+
+The `Filter` type is the heart of grammY's filtering system. It takes a context type `C` and a filter query `Q`, and produces a narrowed context type.
+
+```typescript
+type Filter<C extends Context, Q extends FilterQuery>
+```
+
+**How it works:**
+
+When you filter updates, the resulting context is guaranteed to have specific properties. TypeScript enforces this at compile time.
+
+```typescript
+import { Filter, Context } from 'grammy'
+
+// Without filtering
+bot.use((ctx) => {
+  ctx.message        // type: Message | undefined
+  ctx.message.text   // ❌ Error: Object is possibly 'undefined'
+})
+
+// With filtering
+bot.on('message:text', (ctx) => {
+  // ctx is Filter<Context, 'message:text'>
+  ctx.message        // type: Message (guaranteed!)
+  ctx.message.text   // type: string (guaranteed!)
+})
+```
+
+## FilterQuery
+
+`FilterQuery` represents all possible filter query strings you can use with `bot.on()`.
+
+```typescript
+type FilterQuery = 'message' | 'message:text' | 'message:photo' | 'edited_message' | ...
+```
+
+Filter queries have three levels:
+
+### Level 1: Update Type
+
+Filter by the update type:
+
+```typescript
+bot.on('message', (ctx) => {
+  ctx.message  // Message (not undefined)
+})
+
+bot.on('callback_query', (ctx) => {
+  ctx.callbackQuery  // CallbackQuery (not undefined)
+})
+
+bot.on('inline_query', (ctx) => {
+  ctx.inlineQuery  // InlineQuery (not undefined)
+})
+```
+
+**Available L1 filters:**
+- `'message'`
+- `'edited_message'`
+- `'channel_post'`
+- `'edited_channel_post'`
+- `'business_connection'`
+- `'business_message'`
+- `'edited_business_message'`
+- `'deleted_business_messages'`
+- `'inline_query'`
+- `'chosen_inline_result'`
+- `'callback_query'`
+- `'shipping_query'`
+- `'pre_checkout_query'`
+- `'poll'`
+- `'poll_answer'`
+- `'my_chat_member'`
+- `'chat_member'`
+- `'chat_join_request'`
+- `'message_reaction'`
+- `'message_reaction_count'`
+- `'chat_boost'`
+- `'removed_chat_boost'`
+
+### Level 2: Message Properties
+
+Filter by message content or properties:
+
+```typescript
+bot.on('message:text', (ctx) => {
+  ctx.message.text  // string (guaranteed!)
+})
+
+bot.on('message:photo', (ctx) => {
+  ctx.message.photo  // PhotoSize[] (guaranteed!)
+})
+
+bot.on('message:entities', (ctx) => {
+  ctx.message.entities  // MessageEntity[] (guaranteed!)
+})
+```
+
+**Common L2 filters:**
+- `'message:text'`
+- `'message:photo'`
+- `'message:video'`
+- `'message:audio'`
+- `'message:document'`
+- `'message:sticker'`
+- `'message:animation'`
+- `'message:voice'`
+- `'message:video_note'`
+- `'message:contact'`
+- `'message:location'`
+- `'message:venue'`
+- `'message:poll'`
+- `'message:dice'`
+- `'message:new_chat_members'`
+- `'message:left_chat_member'`
+- `'message:entities'`
+- `'message:caption'`
+- `'message:forward_origin'`
+
+### Level 3: Deep Properties
+
+Filter by nested properties:
+
+```typescript
+bot.on('message:entities:url', (ctx) => {
+  // Message has entities, and at least one is a URL
+  ctx.message.entities  // MessageEntity[] (guaranteed!)
+  ctx.message.text      // string (guaranteed!)
+})
+
+bot.on('message:entities:bot_command', (ctx) => {
+  // Message has bot command entities
+  ctx.message.entities  // MessageEntity[]
+})
+
+bot.on('message:entities:mention', (ctx) => {
+  // Message has @mention entities
+  ctx.message.entities  // MessageEntity[]
+})
+```
+
+**Entity type filters:**
+- `'mention'` - @username
+- `'hashtag'` - #hashtag
+- `'cashtag'` - $USD
+- `'bot_command'` - /start
+- `'url'` - https://example.com
+- `'email'` - user@example.com
+- `'phone_number'` - +1234567890
+- `'bold'` - **bold text**
+- `'italic'` - *italic*
+- `'code'` - `code`
+- `'pre'` - ```code block```
+- `'text_link'` - [link](url)
+- `'text_mention'` - mention without @
+- `'custom_emoji'` - custom emoji
+
+## Filter Shortcuts
+
+grammY provides shortcuts for common filtering patterns:
+
+### Empty L1 Shortcut (`:` prefix)
+
+Filter messages AND channel posts:
+
+```typescript
+// Instead of:
+bot.on(['message:text', 'channel_post:text'], (ctx) => { ... })
+
+// Use:
+bot.on(':text', (ctx) => {
+  ctx.msg?.text  // string | undefined
+})
+```
+
+The `:` shortcut expands to `['message', 'channel_post']`.
+
+### Media Shortcut
+
+```typescript
+// Matches photo OR video
+bot.on('message:media', (ctx) => {
+  // ctx.message.photo OR ctx.message.video exists
+})
+```
+
+### File Shortcut
+
+```typescript
+// Matches any file type
+bot.on('message:file', (ctx) => {
+  // Matches: photo, animation, audio, document, video, video_note, voice, sticker
+})
+```
+
+### Entity Shortcut (Empty L2)
+
+```typescript
+// Matches entities OR caption_entities
+bot.on('message::url', (ctx) => {
+  // ctx.message.entities has URL OR ctx.message.caption_entities has URL
+})
+```
+
+### Combined Shortcuts
+
+```typescript
+// Messages or channel posts with URL in text OR caption
+bot.on('::url', (ctx) => {
+  // Very flexible filtering!
+})
+```
+
+## Multiple Filter Queries
+
+You can pass an array of filter queries for OR logic:
+
+```typescript
+// Matches text OR photo messages
+bot.on(['message:text', 'message:photo'], (ctx) => {
+  if (ctx.message.text) {
+    console.log('Text message:', ctx.message.text)
+  } else if (ctx.message.photo) {
+    console.log('Photo message')
+  }
+})
+```
+
+## Chaining for AND Logic
+
+Chain `.on()` calls for AND logic:
+
+```typescript
+// Message must have BOTH URL entity AND be forwarded
+bot.on('message:entities:url')
+   .on('message:forward_origin', (ctx) => {
+     // ctx.message.entities exists AND has URL
+     // ctx.message.forward_origin exists
+   })
+```
+
+## matchFilter Function
+
+You can create filter predicates programmatically:
+
+```typescript
+import { matchFilter } from 'grammy'
+
+const isTextMessage = matchFilter<Context, 'message:text'>('message:text')
+
+bot.filter(isTextMessage, (ctx) => {
+  ctx.message.text  // string (guaranteed!)
+})
+
+// Use with bot.drop to exclude updates
+bot.drop(matchFilter(':forward_origin'), (ctx) => {
+  // Only handles non-forwarded messages
+})
+```
+
+## FilterCore Type
+
+`FilterCore` is similar to `Filter` but returns only the filtered update structure without wrapping it in a context:
+
+```typescript
+type FilterCore<Q extends FilterQuery>
+
+// Example:
+type TextUpdate = FilterCore<'message:text'>
+// Results in: Update & { message: Message & { text: string } }
+```
+
+This is mainly used internally by grammY.
+
+## Type Narrowing Examples
+
+### Example 1: Text Messages
+
+```typescript
+bot.on('message:text', (ctx) => {
+  // All of these are guaranteed to exist:
+  const message: Message = ctx.message
+  const text: string = ctx.message.text
+  const from: User = ctx.from  // from is guaranteed for messages
+  const chat: Chat = ctx.chat
+})
+```
+
+### Example 2: Photos with Captions
+
+```typescript
+bot.on('message:photo')
+   .on('message:caption', (ctx) => {
+     const photos: PhotoSize[] = ctx.message.photo
+     const caption: string = ctx.message.caption
+   })
+```
+
+### Example 3: Callback Queries
+
+```typescript
+bot.on('callback_query:data', (ctx) => {
+  const data: string = ctx.callbackQuery.data
+  const user: User = ctx.from
+  const messageId: number | undefined = ctx.msgId
+})
+```
+
+### Example 4: New Chat Members
+
+```typescript
+bot.on('message:new_chat_members', (ctx) => {
+  const newMembers: User[] = ctx.message.new_chat_members
+  console.log(`${newMembers.length} user(s) joined the chat`)
+})
+```
+
+## Special Filter: `me`
+
+Use `:me` to filter for your bot:
+
+```typescript
+bot.on('message:new_chat_members:me', (ctx) => {
+  // Your bot was added to a chat
+  console.log('I was added to a new chat!')
+})
+
+bot.on('message:left_chat_member:me', (ctx) => {
+  // Your bot was removed from a chat
+  console.log('I was removed from a chat')
+})
+```
+
+## Advanced: Custom Type Predicates
+
+For complete control, define custom type predicates:
+
+```typescript
+function hasPhoto(ctx: Context): ctx is Context & { message: { photo: PhotoSize[] } } {
+  return ctx.message?.photo !== undefined
+}
+
+bot.filter(hasPhoto, (ctx) => {
+  ctx.message.photo  // PhotoSize[] (type-safe!)
+})
+```
+
+Filter types are grammY's secret weapon for writing type-safe, expressive bot code. Use them to eliminate `undefined` checks and catch errors at compile time!

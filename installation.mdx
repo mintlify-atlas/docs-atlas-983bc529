@@ -1,0 +1,416 @@
+---
+title: Installation
+description: Install grammY for Node.js, Deno, or browsers. Learn about package managers, version requirements, and platform-specific setup.
+---
+
+## Overview
+
+grammY is available for multiple JavaScript runtimes and can be installed using your preferred package manager. Choose the installation method that matches your environment.
+
+<Info>
+grammY requires **Node.js 12.20.0 or higher**, or the latest version of **Deno**.
+</Info>
+
+## Node.js Installation
+
+grammY is available on npm as the `grammy` package. You can install it using any Node.js package manager.
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install grammy
+    ```
+  </Tab>
+  
+  <Tab title="yarn">
+    ```bash
+    yarn add grammy
+    ```
+  </Tab>
+  
+  <Tab title="pnpm">
+    ```bash
+    pnpm add grammy
+    ```
+  </Tab>
+</Tabs>
+
+### Usage in Node.js
+
+After installation, import grammY in your project:
+
+<CodeGroup>
+```javascript JavaScript (CommonJS)
+const { Bot } = require("grammy");
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+bot.command("start", (ctx) => ctx.reply("Hello!"));
+bot.start();
+```
+
+```javascript JavaScript (ESM)
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+bot.command("start", (ctx) => ctx.reply("Hello!"));
+bot.start();
+```
+
+```typescript TypeScript
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+bot.command("start", (ctx) => ctx.reply("Hello!"));
+bot.start();
+```
+</CodeGroup>
+
+### Version Requirements
+
+grammY supports the following Node.js versions:
+
+- **Node.js 12.20.0** or higher
+- **Node.js 14.13.1** or higher (recommended)
+- All current LTS versions
+
+<Warning>
+Make sure your Node.js version meets the minimum requirements. You can check your version with `node --version`.
+</Warning>
+
+## Deno Installation
+
+grammY runs natively on Deno without any transpilation. All grammY packages are published to [deno.land/x](https://deno.land/x/grammy).
+
+### Usage in Deno
+
+Import grammY directly from the Deno module registry:
+
+```typescript
+import { Bot } from "https://deno.land/x/grammy/mod.ts";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+bot.command("start", (ctx) => ctx.reply("Hello!"));
+bot.start();
+```
+
+### Running with Deno
+
+When running your bot, you need to grant network permissions:
+
+```bash
+deno run --allow-net bot.ts
+```
+
+<Tip>
+You can also import specific versions:
+
+```typescript
+import { Bot } from "https://deno.land/x/grammy@v1.41.1/mod.ts";
+```
+</Tip>
+
+### Why Deno Support?
+
+grammY is developed primarily for Deno and then compiled to Node.js. This approach provides:
+
+- **Native Deno support** with no transpilation needed
+- **Modern JavaScript features** out of the box
+- **Type safety** with built-in TypeScript support
+- **Secure by default** with explicit permissions
+
+<Note>
+While grammY is Deno-first, the documentation is written Node.js-first since most bot developers still use Node.js. All examples work on both platforms.
+</Note>
+
+## Browser & Edge Installation
+
+grammY can run in browsers and on edge platforms like Cloudflare Workers, Deno Deploy, and more.
+
+### Using Web Bundle (Node.js)
+
+For Node.js projects that need browser compatibility:
+
+```typescript
+import { Bot } from "grammy/web";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+bot.command("start", (ctx) => ctx.reply("Hello!"));
+```
+
+<Info>
+The web bundle is included in the npm package and doesn't require separate installation.
+</Info>
+
+### Using Deno Bundle
+
+For browsers or edge runtimes, grammY is available as a JavaScript bundle via [bundle.deno.dev](https://bundle.deno.dev/):
+
+```html
+<script type="module">
+  import { Bot } from "https://bundle.deno.dev/https://deno.land/x/grammy/mod.ts";
+  
+  const bot = new Bot("YOUR_BOT_TOKEN");
+  // Note: Use webhooks instead of polling in browser environments
+</script>
+```
+
+### Cloudflare Workers Example
+
+```typescript
+import { Bot } from "grammy/web";
+
+export default {
+  async fetch(request: Request) {
+    const bot = new Bot("YOUR_BOT_TOKEN");
+    
+    bot.command("start", (ctx) => ctx.reply("Hello from Cloudflare!"));
+    
+    // Handle webhook
+    if (request.method === "POST") {
+      const update = await request.json();
+      await bot.handleUpdate(update);
+      return new Response("OK");
+    }
+    
+    return new Response("Bot is running!");
+  },
+};
+```
+
+<Warning>
+When running in browsers or edge environments, you **must use webhooks** instead of long polling. Long polling requires a persistent connection which isn't available in these environments.
+</Warning>
+
+## Package Exports
+
+The grammY package provides multiple entry points for different use cases:
+
+### Main Export
+
+```typescript
+import { Bot, Context } from "grammy";
+```
+
+Includes all core functionality:
+- `Bot` - Main bot class
+- `Context` - Context object for handling updates
+- `Composer` - Middleware composition
+- `Api` - Telegram Bot API wrapper
+- All convenience utilities (keyboard, inline query, etc.)
+
+### Web Export
+
+```typescript
+import { Bot } from "grammy/web";
+```
+
+Browser-compatible bundle for:
+- Cloudflare Workers
+- Deno Deploy
+- Service Workers
+- Browser applications
+
+### Types Export
+
+```typescript
+import type { Update, Message } from "grammy/types";
+```
+
+TypeScript type definitions for:
+- All Telegram Bot API types
+- Update types
+- Message types
+- And more
+
+<Info>
+The `grammy/types` export provides access to the underlying `@grammyjs/types` package, which contains TypeScript definitions for the entire Telegram Bot API.
+</Info>
+
+## TypeScript Support
+
+grammY has first-class TypeScript support with complete type definitions.
+
+### Installation for TypeScript
+
+```bash
+npm install grammy
+npm install -D typescript @types/node
+```
+
+### TypeScript Configuration
+
+Add a `tsconfig.json` file to your project:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}
+```
+
+### Type Inference
+
+grammY provides excellent type inference. Your editor will automatically suggest available methods and properties:
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message:text", (ctx) => {
+  // TypeScript knows ctx.message.text exists
+  const text: string = ctx.message.text;
+  
+  // Autocomplete works for all methods
+  ctx.reply(text.toUpperCase());
+});
+```
+
+<Tip>
+Use TypeScript for the best development experience. grammY's types will help you catch errors early and provide helpful autocomplete suggestions.
+</Tip>
+
+## Dependencies
+
+grammY has minimal dependencies to keep your bundle size small:
+
+### Node.js Dependencies
+
+- `@grammyjs/types` - TypeScript definitions for Telegram Bot API
+- `node-fetch` - HTTP client for making API calls
+- `abort-controller` - For cancelling requests
+- `debug` - Debugging utility
+
+### Deno Dependencies
+
+Deno version has **zero dependencies** - everything is built using Deno's standard library.
+
+## Verifying Installation
+
+After installation, verify that grammY is working correctly:
+
+<CodeGroup>
+```javascript Node.js
+const { Bot } = require("grammy");
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+console.log("grammY installed successfully!");
+
+bot.command("start", (ctx) => ctx.reply("It works!"));
+bot.start();
+```
+
+```typescript Deno
+import { Bot } from "https://deno.land/x/grammy/mod.ts";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+console.log("grammY installed successfully!");
+
+bot.command("start", (ctx) => ctx.reply("It works!"));
+bot.start();
+```
+</CodeGroup>
+
+Run the code and send `/start` to your bot. If you get a response, everything is working!
+
+## Updating grammY
+
+### Node.js
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm update grammy
+    ```
+  </Tab>
+  
+  <Tab title="yarn">
+    ```bash
+    yarn upgrade grammy
+    ```
+  </Tab>
+  
+  <Tab title="pnpm">
+    ```bash
+    pnpm update grammy
+    ```
+  </Tab>
+</Tabs>
+
+### Deno
+
+Update the version number in your import URL:
+
+```typescript
+// Before
+import { Bot } from "https://deno.land/x/grammy@v1.40.0/mod.ts";
+
+// After
+import { Bot } from "https://deno.land/x/grammy@v1.41.1/mod.ts";
+```
+
+<Tip>
+Omit the version to always use the latest version (not recommended for production):
+
+```typescript
+import { Bot } from "https://deno.land/x/grammy/mod.ts";
+```
+</Tip>
+
+## Troubleshooting
+
+### "Cannot find module 'grammy'"
+
+Make sure you've installed grammY:
+```bash
+npm install grammy
+```
+
+### "Error: Empty token!"
+
+You need to provide a valid bot token from [@BotFather](https://t.me/BotFather):
+```typescript
+const bot = new Bot("YOUR_ACTUAL_TOKEN_HERE");
+```
+
+### Permission Errors (Deno)
+
+Make sure to grant network permissions:
+```bash
+deno run --allow-net bot.ts
+```
+
+### Node.js Version Too Old
+
+Upgrade to Node.js 14.13.1 or higher:
+```bash
+node --version  # Check your version
+nvm install 20  # Install Node.js 20 (if using nvm)
+```
+
+## Next Steps
+
+Now that you have grammY installed, you're ready to build your bot!
+
+- Follow the [Quickstart](/get-started/quickstart) guide to create your first bot
+- Explore the [API Reference](/api/bot) to learn about available methods
+- Check out [Examples](https://github.com/grammyjs/examples) for inspiration
+
+## Getting Help
+
+If you run into issues during installation:
+
+- Check the [FAQ](/resources/faq) for common questions
+- Ask in the [Telegram Chat](https://t.me/grammyjs)
+- Open an issue on [GitHub](https://github.com/grammyjs/grammY)

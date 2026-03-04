@@ -1,0 +1,638 @@
+---
+title: InlineKeyboard
+description: Inline keyboard builder for interactive buttons in Telegram messages
+icon: grid
+---
+
+The `InlineKeyboard` class simplifies building inline keyboards (interactive button grids attached to messages). Unlike custom keyboards, inline keyboards appear directly below messages and trigger callback queries or open URLs when pressed.
+
+## Constructor
+
+Creates a new InlineKeyboard instance.
+
+```typescript
+const keyboard = new InlineKeyboard(inline_keyboard?: InlineKeyboardButton[][])
+```
+
+<ParamField path="inline_keyboard" type="InlineKeyboardButton[][]">
+  Optional two-dimensional array of inline keyboard buttons. If not provided, starts with an empty keyboard.
+</ParamField>
+
+### Example
+
+```typescript
+import { InlineKeyboard } from 'grammy'
+
+// Empty keyboard
+const keyboard = new InlineKeyboard()
+
+// Pre-initialized keyboard
+const keyboard = new InlineKeyboard([[
+  { text: 'Button 1', callback_data: 'btn1' },
+  { text: 'Button 2', callback_data: 'btn2' }
+]])
+```
+
+## Properties
+
+<ResponseField name="inline_keyboard" type="InlineKeyboardButton[][]">
+  The two-dimensional array of buttons that makes up the inline keyboard (read-only).
+</ResponseField>
+
+## Button Methods
+
+These methods add buttons to the keyboard and return `this` for chaining.
+
+### text
+
+Adds a callback query button that sends data back to your bot when pressed.
+
+```typescript
+keyboard.text(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  data?: string
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="data" type="string">
+  Callback data to send back to your bot. Defaults to the button text if omitted.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .text('Like', 'like_btn')
+  .text('Dislike', 'dislike_btn')
+
+// Handle callback
+bot.callbackQuery('like_btn', async (ctx) => {
+  await ctx.answerCallbackQuery('You liked this!')
+})
+```
+
+### url
+
+Adds a button that opens a URL when pressed.
+
+```typescript
+keyboard.url(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  url: string
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  HTTP or `tg://` URL to open. Can use `tg://user?id=<user_id>` to mention users.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .url('Visit Website', 'https://grammy.dev')
+  .url('Open in Telegram', 'tg://resolve?domain=grammyjs')
+```
+
+### webApp
+
+Adds a button that launches a Web App.
+
+```typescript
+keyboard.webApp(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  url: string | WebAppInfo
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="url" type="string | WebAppInfo" required>
+  HTTPS URL of the Web App or WebAppInfo object
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .webApp('Open Web App', 'https://example.com/webapp')
+```
+
+### login
+
+Adds a login button for Telegram Login Widget.
+
+```typescript
+keyboard.login(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  loginUrl: string | LoginUrl
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="loginUrl" type="string | LoginUrl" required>
+  HTTPS URL for automatic authorization or LoginUrl object with additional options
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .login('Login', 'https://example.com/auth')
+  .login('Login with options', {
+    url: 'https://example.com/auth',
+    forward_text: 'Login to Bot',
+    request_write_access: true
+  })
+```
+
+### switchInline
+
+Adds a button that starts an inline query in a selected chat.
+
+```typescript
+keyboard.switchInline(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  query?: string
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="query" type="string">
+  Inline query string to prefill. Defaults to empty string.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .switchInline('Share')
+  .switchInline('Search cats', 'cats')
+
+// User will be prompted to select a chat, then your bot
+// receives an inline query update
+bot.on('inline_query', (ctx) => {
+  console.log('Query:', ctx.inlineQuery.query)
+})
+```
+
+### switchInlineCurrent
+
+Adds a button that starts an inline query in the current chat.
+
+```typescript
+keyboard.switchInlineCurrent(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  query?: string
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="query" type="string">
+  Inline query string to prefill. Defaults to empty string.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .switchInlineCurrent('Search here', 'dogs')
+```
+
+### switchInlineChosen
+
+Adds a button that starts an inline query with chat type restrictions.
+
+```typescript
+keyboard.switchInlineChosen(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  query?: SwitchInlineQueryChosenChat
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="query" type="SwitchInlineQueryChosenChat">
+  Object describing which chats can be picked
+  
+  <Expandable title="Query properties">
+    <ParamField path="query" type="string">
+      Inline query to prefill
+    </ParamField>
+    
+    <ParamField path="allow_user_chats" type="boolean">
+      Allow selecting private chats with users
+    </ParamField>
+    
+    <ParamField path="allow_bot_chats" type="boolean">
+      Allow selecting private chats with bots
+    </ParamField>
+    
+    <ParamField path="allow_group_chats" type="boolean">
+      Allow selecting group chats
+    </ParamField>
+    
+    <ParamField path="allow_channel_chats" type="boolean">
+      Allow selecting channel chats
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .switchInlineChosen('Share to group', {
+    query: 'check this out',
+    allow_group_chats: true
+  })
+```
+
+### copyText
+
+Adds a button that copies text to the clipboard when pressed.
+
+```typescript
+keyboard.copyText(
+  text: string | InlineKeyboardButton.AbstractInlineKeyboardButton,
+  copyText: string | CopyTextButton
+): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="copyText" type="string | CopyTextButton" required>
+  Text to copy to clipboard
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .copyText('Copy Code', 'npm install grammy')
+```
+
+### game
+
+Adds a game button. Must be the first button in the first row.
+
+```typescript
+keyboard.game(text: string | InlineKeyboardButton.AbstractInlineKeyboardButton): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .game('Play Game')
+```
+
+### pay
+
+Adds a payment button. Must be the first button in the first row and can only be used in invoice messages.
+
+```typescript
+keyboard.pay(text: string | InlineKeyboardButton.AbstractInlineKeyboardButton): InlineKeyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display. Substrings "⭐" and "XTR" will be replaced with a Telegram Star icon.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .pay('Pay 100 ⭐')
+```
+
+## Styling Methods
+
+These methods modify the last added button.
+
+### style
+
+Applies a style to the last added button.
+
+```typescript
+keyboard.style(style: 'primary' | 'success' | 'danger'): InlineKeyboard
+```
+
+<ParamField path="style" type="'primary' | 'success' | 'danger'" required>
+  Button style: `'primary'` (blue), `'success'` (green), or `'danger'` (red)
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .text('Delete', 'delete').style('danger')
+  .text('Confirm', 'confirm').style('success')
+```
+
+### danger
+
+Applies danger (red) style. Alias for `.style('danger')`.
+
+```typescript
+keyboard.danger(): InlineKeyboard
+```
+
+### success
+
+Applies success (green) style. Alias for `.style('success')`.
+
+```typescript
+keyboard.success(): InlineKeyboard
+```
+
+### primary
+
+Applies primary (blue) style. Alias for `.style('primary')`.
+
+```typescript
+keyboard.primary(): InlineKeyboard
+```
+
+### icon
+
+Adds a custom emoji icon to the last added button.
+
+```typescript
+keyboard.icon(icon: string): InlineKeyboard
+```
+
+<ParamField path="icon" type="string" required>
+  Unique identifier of the custom emoji
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .text('Home', 'home').icon('5368324170671202286')
+```
+
+## Layout Methods
+
+### row
+
+Adds a line break to start a new row of buttons.
+
+```typescript
+keyboard.row(...buttons: InlineKeyboardButton[]): InlineKeyboard
+```
+
+<ParamField path="buttons" type="InlineKeyboardButton[]">
+  Optional buttons to add to the new row
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .text('A', 'a').text('B', 'b').row()
+  .text('C', 'c').text('D', 'd')
+
+// Layout:
+// [A] [B]
+// [C] [D]
+```
+
+### add
+
+Adds pre-constructed button objects to the current row.
+
+```typescript
+keyboard.add(...buttons: InlineKeyboardButton[]): InlineKeyboard
+```
+
+<ParamField path="buttons" type="InlineKeyboardButton[]" required>
+  Button objects to add
+</ParamField>
+
+## Transformation Methods
+
+### toTransposed
+
+Creates a new inline keyboard with rows and columns flipped.
+
+```typescript
+keyboard.toTransposed(): InlineKeyboard
+```
+
+**Example:**
+
+```typescript
+const original = new InlineKeyboard()
+  .text('A', 'a').text('B', 'b').row()
+  .text('C', 'c').text('D', 'd')
+
+const transposed = original.toTransposed()
+// Original:    Transposed:
+// [A] [B]      [A] [C]
+// [C] [D]      [B] [D]
+```
+
+### toFlowed
+
+Creates a new inline keyboard with buttons reflowed into a given number of columns.
+
+```typescript
+keyboard.toFlowed(columns: number, options?: { fillLastRow?: boolean }): InlineKeyboard
+```
+
+<ParamField path="columns" type="number" required>
+  Maximum number of buttons per row
+</ParamField>
+
+<ParamField path="options" type="object">
+  <Expandable title="Options properties">
+    <ParamField path="fillLastRow" type="boolean">
+      Set to `true` to completely fill up the last row
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .text('1', '1').text('2', '2').text('3', '3')
+  .text('4', '4').text('5', '5')
+
+const flowed = keyboard.toFlowed(2)
+// [1] [2]
+// [3] [4]
+// [5]
+```
+
+### clone
+
+Creates a deep copy of the inline keyboard.
+
+```typescript
+keyboard.clone(): InlineKeyboard
+```
+
+### append
+
+Appends buttons from other inline keyboards.
+
+```typescript
+keyboard.append(...sources: (InlineKeyboardButton[][] | InlineKeyboard)[]): InlineKeyboard
+```
+
+<ParamField path="sources" type="Array" required>
+  Inline keyboards or button arrays to append
+</ParamField>
+
+## Static Methods
+
+### InlineKeyboard.text
+
+Creates a callback button without adding it to a keyboard.
+
+```typescript
+InlineKeyboard.text(text: string, data?: string): InlineKeyboardButton.CallbackButton
+```
+
+### InlineKeyboard.url
+
+Creates a URL button without adding it to a keyboard.
+
+```typescript
+InlineKeyboard.url(text: string, url: string): InlineKeyboardButton.UrlButton
+```
+
+### InlineKeyboard.from
+
+Creates an inline keyboard from a two-dimensional button array.
+
+```typescript
+InlineKeyboard.from(source: InlineKeyboardButton[][] | InlineKeyboard): InlineKeyboard
+```
+
+<ParamField path="source" type="InlineKeyboardButton[][] | InlineKeyboard" required>
+  Button array or existing keyboard to copy
+</ParamField>
+
+**Example:**
+
+```typescript
+const button = InlineKeyboard.text('Click', 'click_data')
+const keyboard = InlineKeyboard.from([[button]])
+```
+
+All other button methods also have static equivalents.
+
+## Complete Example
+
+```typescript
+import { Bot, InlineKeyboard } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Basic inline keyboard
+bot.command('start', async (ctx) => {
+  const keyboard = new InlineKeyboard()
+    .text('👍 Like', 'like').text('👎 Dislike', 'dislike').row()
+    .url('Visit Website', 'https://grammy.dev')
+  
+  await ctx.reply('Rate this bot:', {
+    reply_markup: keyboard
+  })
+})
+
+// Handle callbacks
+bot.callbackQuery('like', async (ctx) => {
+  await ctx.answerCallbackQuery('Thanks for the like!')
+  await ctx.editMessageText('You liked this bot! ❤️')
+})
+
+bot.callbackQuery('dislike', async (ctx) => {
+  await ctx.answerCallbackQuery('Sorry to hear that!')
+  await ctx.editMessageText('You disliked this bot.')
+})
+
+// Paginated keyboard
+let currentPage = 0
+const totalPages = 5
+
+bot.command('pages', async (ctx) => {
+  currentPage = 0
+  await showPage(ctx, currentPage)
+})
+
+async function showPage(ctx: any, page: number) {
+  const keyboard = new InlineKeyboard()
+  
+  if (page > 0) {
+    keyboard.text('◀️ Previous', `page_${page - 1}`)
+  }
+  
+  keyboard.text(`${page + 1}/${totalPages}`, 'noop')
+  
+  if (page < totalPages - 1) {
+    keyboard.text('Next ▶️', `page_${page + 1}`)
+  }
+  
+  await ctx.editMessageText(`Page ${page + 1} of ${totalPages}`, {
+    reply_markup: keyboard
+  })
+}
+
+bot.callbackQuery(/page_(\d+)/, async (ctx) => {
+  const page = parseInt(ctx.match[1])
+  currentPage = page
+  await ctx.answerCallbackQuery()
+  await showPage(ctx, page)
+})
+
+// Dynamic keyboard with styles
+bot.command('settings', async (ctx) => {
+  const keyboard = new InlineKeyboard()
+    .text('✅ Notifications', 'toggle_notifications').success().row()
+    .text('🎨 Theme', 'theme').primary().row()
+    .text('🗑 Delete Account', 'delete').danger()
+  
+  await ctx.reply('Settings:', {
+    reply_markup: keyboard
+  })
+})
+
+bot.start()
+```
+
+## See Also
+
+- [Keyboard](/api/keyboard) - Custom reply keyboards
+- [Inline Keyboards Guide](https://grammy.dev/plugins/keyboard#inline-keyboards) - Complete documentation
+- [Telegram Bot API: InlineKeyboardMarkup](https://core.telegram.org/bots/api#inlinekeyboardmarkup)

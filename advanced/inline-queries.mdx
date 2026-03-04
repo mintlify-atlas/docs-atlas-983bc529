@@ -1,0 +1,308 @@
+---
+title: Inline Queries
+description: Handle inline queries and let users interact with your bot from any chat
+icon: magnifying-glass
+---
+
+# Inline Queries
+
+Inline queries allow users to interact with your bot from any chat by typing `@your_bot query` in the message input field. This is perfect for creating search bots, content aggregators, and interactive utilities.
+
+## Enabling Inline Mode
+
+First, enable inline mode for your bot:
+
+1. Talk to [@BotFather](https://t.me/BotFather)
+2. Send `/mybots` and select your bot
+3. Go to **Bot Settings** → **Inline Mode**
+4. Enable inline mode and optionally set a placeholder
+
+## Basic Usage
+
+```typescript
+import { Bot, InlineKeyboard } from "grammy";
+import { InlineQueryResultBuilder } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("inline_query", async (ctx) => {
+  const query = ctx.inlineQuery.query;
+  
+  const results = [
+    InlineQueryResultBuilder.article(
+      "id-1",
+      "Article Title",
+      "Article description"
+    ).text(`You searched for: ${query}`),
+    
+    InlineQueryResultBuilder.photo(
+      "id-2",
+      "https://example.com/photo.jpg",
+      "https://example.com/thumb.jpg"
+    ),
+  ];
+
+  await ctx.answerInlineQuery(results);
+});
+```
+
+## Result Types
+
+grammY supports all Telegram inline result types:
+
+<Tabs>
+  <Tab title="Article">
+    ```typescript
+    InlineQueryResultBuilder.article(
+      "unique-id",
+      "Article Title",
+      "Description shown in the list"
+    ).text("Message content when selected", {
+      parse_mode: "Markdown",
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Photo">
+    ```typescript
+    InlineQueryResultBuilder.photo(
+      "unique-id",
+      "https://example.com/image.jpg",  // photo URL
+      "https://example.com/thumb.jpg"   // thumbnail URL
+    ).caption("Photo caption");
+    ```
+  </Tab>
+  
+  <Tab title="Video">
+    ```typescript
+    InlineQueryResultBuilder.video(
+      "unique-id",
+      "https://example.com/video.mp4",
+      "video/mp4",
+      "https://example.com/thumb.jpg",
+      "Video Title"
+    );
+    ```
+  </Tab>
+  
+  <Tab title="GIF">
+    ```typescript
+    InlineQueryResultBuilder.gif(
+      "unique-id",
+      "https://example.com/animation.gif",
+      "https://example.com/thumb.jpg"
+    );
+    ```
+  </Tab>
+</Tabs>
+
+## Adding Keyboards
+
+Attach inline keyboards to inline results:
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .text("Button 1", "callback-1")
+  .url("Visit Site", "https://grammy.dev");
+
+const result = InlineQueryResultBuilder.article(
+  "id",
+  "Title",
+  "Description"
+)
+  .text("Message content")
+  .keyboard(keyboard);
+
+await ctx.answerInlineQuery([result]);
+```
+
+## Search Example
+
+```typescript
+interface SearchItem {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+}
+
+const database: SearchItem[] = [
+  {
+    id: "1",
+    title: "Getting Started",
+    description: "Learn how to create your first bot",
+    url: "https://grammy.dev/quickstart",
+  },
+  // ... more items
+];
+
+bot.on("inline_query", async (ctx) => {
+  const query = ctx.inlineQuery.query.toLowerCase();
+
+  // Search the database
+  const matches = database.filter(
+    (item) =>
+      item.title.toLowerCase().includes(query) ||
+      item.description.toLowerCase().includes(query)
+  );
+
+  // Build results
+  const results = matches.slice(0, 50).map((item) =>
+    InlineQueryResultBuilder.article(item.id, item.title, item.description)
+      .text(
+        `${item.title}\n\n${item.description}\n\n${item.url}`,
+        { parse_mode: "Markdown" }
+      )
+      .keyboard(
+        new InlineKeyboard().url("Learn More", item.url)
+      )
+  );
+
+  await ctx.answerInlineQuery(results, {
+    cache_time: 300, // Cache results for 5 minutes
+  });
+});
+```
+
+## Pagination
+
+Handle large result sets with pagination:
+
+```typescript
+bot.on("inline_query", async (ctx) => {
+  const offset = parseInt(ctx.inlineQuery.offset) || 0;
+  const limit = 50;
+
+  const results = getAllResults()
+    .slice(offset, offset + limit)
+    .map((item, index) =>
+      InlineQueryResultBuilder.article(
+        `${offset + index}`,
+        item.title,
+        item.description
+      ).text(item.content)
+    );
+
+  await ctx.answerInlineQuery(results, {
+    next_offset: results.length === limit ? String(offset + limit) : "",
+  });
+});
+```
+
+## Chosen Inline Results
+
+Track which results users actually choose:
+
+```typescript
+bot.on("chosen_inline_result", async (ctx) => {
+  const resultId = ctx.chosenInlineResult.result_id;
+  const query = ctx.chosenInlineResult.query;
+
+  console.log(`User chose result ${resultId} for query: ${query}`);
+
+  // Update analytics, track usage, etc.
+});
+```
+
+<Note>
+You must enable chosen inline result feedback in BotFather for this to work. Send `/setinlinefeedback` to @BotFather.
+</Note>
+
+## Answer Options
+
+```typescript
+await ctx.answerInlineQuery(results, {
+  cache_time: 300,              // Cache results on Telegram servers (seconds)
+  is_personal: true,            // Results are specific to this user
+  next_offset: "50",            // Offset for pagination
+  button: {                      // Show a button above results
+    text: "Open in Bot",
+    start_parameter: "inline",
+  },
+});
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Quick Responses" icon="bolt">
+    Answer inline queries within 1 second. Cache results when possible.
+  </Card>
+  <Card title="Limit Results" icon="list">
+    Return at most 50 results per query. Use pagination for more.
+  </Card>
+  <Card title="Cache Intelligently" icon="database">
+    Set appropriate `cache_time` based on how often your content changes.
+  </Card>
+  <Card title="Handle Empty Queries" icon="circle-question">
+    Provide useful default results when the query is empty.
+  </Card>
+</CardGroup>
+
+## Advanced Example: Image Search Bot
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("inline_query", async (ctx) => {
+  const query = ctx.inlineQuery.query || "cats";
+
+  // Fetch images from an API
+  const images = await searchImages(query);
+
+  const results = images.map((img, index) =>
+    InlineQueryResultBuilder.photo(
+      `${query}-${index}`,
+      img.url,
+      img.thumbnail
+    )
+      .caption(`${img.title} - ${query}`)
+      .keyboard(
+        new InlineKeyboard()
+          .url("View Full Size", img.fullUrl)
+          .switchInlineCurrent("Search Again", query)
+      )
+  );
+
+  await ctx.answerInlineQuery(results, {
+    cache_time: 600,
+    is_personal: false,
+  });
+});
+
+bot.on("chosen_inline_result", async (ctx) => {
+  // Track which images users select
+  console.log("Chosen:", ctx.chosenInlineResult);
+});
+
+bot.start();
+```
+
+## Common Issues
+
+<Accordion title="Results not showing">
+  Make sure:
+  - Inline mode is enabled in BotFather
+  - You're answering the query within 30 seconds
+  - Result IDs are unique
+  - Required fields are provided for each result type
+</Accordion>
+
+<Accordion title="Keyboard not appearing">
+  Keyboards on inline results only appear when the user sends the result. They don't show in the inline query list.
+</Accordion>
+
+<Accordion title="Slow response time">
+  - Cache API responses
+  - Use pagination to limit results
+  - Consider using `answerInlineQuery` options to cache results on Telegram's servers
+  - Optimize database queries
+</Accordion>
+
+## See Also
+
+- [Inline Query API Reference](/api/types)
+- [Keyboards](/advanced/keyboards)
+- [Bot API Documentation](https://core.telegram.org/bots/api#inline-mode)

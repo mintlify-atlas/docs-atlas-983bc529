@@ -1,0 +1,428 @@
+---
+title: InputFile
+description: Class for uploading files to Telegram in grammY
+icon: file
+---
+
+The `InputFile` class represents a file to be uploaded to Telegram. It can handle local file paths, URLs, buffers, streams, and various other file sources.
+
+## Constructor
+
+Creates a new InputFile instance from various file sources.
+
+```typescript
+new InputFile(
+  file: string | Blob | URL | Uint8Array | ReadableStream | Iterable | AsyncIterable | (() => any),
+  filename?: string
+)
+```
+
+<ParamField path="file" type="string | Blob | URL | Uint8Array | ReadableStream | ..." required>
+  The file data source. Can be:
+  - **String**: Local file path (Deno only) or identifier
+  - **Blob**: File blob object
+  - **URL**: URL object pointing to a file
+  - **Uint8Array**: Raw file bytes
+  - **ReadableStream**: Stream of file data
+  - **Iterable/AsyncIterable**: Iterator yielding `Uint8Array` chunks
+  - **Function**: Supplier function returning any of the above
+  
+  **Note:** Do not pass HTTP URLs as strings. Use `new URL(...)` or pass file IDs directly to API methods.
+</ParamField>
+
+<ParamField path="filename" type="string">
+  Optional filename. If omitted, grammY attempts to guess it from the file source (file paths and URLs).
+</ParamField>
+
+### Examples
+
+```typescript
+import { InputFile } from 'grammy'
+
+// From local file path (Deno)
+const file1 = new InputFile('/path/to/image.jpg')
+
+// From URL object
+const file2 = new InputFile(new URL('https://grammy.dev/images/grammY.png'))
+
+// From Blob
+const blob = new Blob(['Hello, world!'], { type: 'text/plain' })
+const file3 = new InputFile(blob, 'hello.txt')
+
+// From Uint8Array buffer
+const buffer = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0])
+const file4 = new InputFile(buffer, 'image.jpg')
+
+// From ReadableStream
+const response = await fetch('https://example.com/file.pdf')
+const file5 = new InputFile(response.body, 'document.pdf')
+
+// From supplier function (lazy loading)
+const file6 = new InputFile(
+  async () => {
+    const data = await fetchFileFromDatabase()
+    return data
+  },
+  'data.bin'
+)
+```
+
+## Properties
+
+<ResponseField name="filename" type="string | undefined">
+  The filename of the file. May be `undefined` if not specified and couldn't be guessed from the source.
+</ResponseField>
+
+## Usage with Bot API Methods
+
+You can use `InputFile` instances with any method that accepts file uploads.
+
+### Sending Photos
+
+```typescript
+import { Bot, InputFile } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('photo', async (ctx) => {
+  // From local file
+  await ctx.replyWithPhoto(new InputFile('/path/to/photo.jpg'))
+  
+  // From URL
+  await ctx.replyWithPhoto(
+    new InputFile(new URL('https://grammy.dev/images/grammY.png'))
+  )
+  
+  // With caption
+  await ctx.replyWithPhoto(
+    new InputFile('/path/to/photo.jpg'),
+    { caption: 'Check out this photo!' }
+  )
+})
+```
+
+### Sending Documents
+
+```typescript
+bot.command('document', async (ctx) => {
+  const doc = new InputFile('/path/to/document.pdf')
+  await ctx.replyWithDocument(doc, {
+    caption: 'Here is your document',
+    thumbnail: new InputFile('/path/to/thumbnail.jpg')
+  })
+})
+```
+
+### Sending Audio
+
+```typescript
+bot.command('audio', async (ctx) => {
+  await ctx.replyWithAudio(
+    new InputFile('/path/to/song.mp3'),
+    {
+      title: 'My Song',
+      performer: 'Artist Name',
+      thumbnail: new InputFile('/path/to/cover.jpg')
+    }
+  )
+})
+```
+
+### Sending Video
+
+```typescript
+bot.command('video', async (ctx) => {
+  await ctx.replyWithVideo(
+    new InputFile('/path/to/video.mp4'),
+    {
+      caption: 'Watch this video!',
+      width: 1920,
+      height: 1080,
+      thumbnail: new InputFile('/path/to/thumbnail.jpg')
+    }
+  )
+})
+```
+
+### Sending Stickers
+
+```typescript
+bot.command('sticker', async (ctx) => {
+  await ctx.replyWithSticker(new InputFile('/path/to/sticker.webp'))
+})
+```
+
+### Sending Voice Messages
+
+```typescript
+bot.command('voice', async (ctx) => {
+  await ctx.replyWithVoice(
+    new InputFile('/path/to/voice.ogg'),
+    { caption: 'Voice message' }
+  )
+})
+```
+
+### Sending Video Notes
+
+```typescript
+bot.command('videonote', async (ctx) => {
+  await ctx.replyWithVideoNote(
+    new InputFile('/path/to/video_note.mp4'),
+    { length: 240 }
+  )
+})
+```
+
+## Media Groups
+
+You can use `InputFile` in media groups to send albums.
+
+```typescript
+import { InputMediaBuilder } from 'grammy'
+
+bot.command('album', async (ctx) => {
+  await ctx.replyWithMediaGroup([
+    InputMediaBuilder.photo(new InputFile('/path/to/photo1.jpg')),
+    InputMediaBuilder.photo(new InputFile('/path/to/photo2.jpg'), {
+      caption: 'Second photo'
+    }),
+    InputMediaBuilder.video(new InputFile('/path/to/video.mp4'))
+  ])
+})
+```
+
+## Advanced Usage
+
+### Lazy Loading Files
+
+Use a supplier function to load files only when needed:
+
+```typescript
+bot.command('lazy', async (ctx) => {
+  const file = new InputFile(
+    async () => {
+      console.log('Fetching file from database...')
+      const data = await database.getFile(ctx.from.id)
+      return data
+    },
+    'user_file.pdf'
+  )
+  
+  // File is only fetched when this line executes
+  await ctx.replyWithDocument(file)
+})
+```
+
+### Streaming Large Files
+
+For large files, use streams to avoid loading the entire file into memory:
+
+```typescript
+import { createReadStream } from 'fs'
+
+bot.command('large', async (ctx) => {
+  // Node.js example
+  const stream = createReadStream('/path/to/large_video.mp4')
+  
+  await ctx.replyWithVideo(
+    new InputFile(stream, 'large_video.mp4'),
+    { supports_streaming: true }
+  )
+})
+```
+
+### Fetching from URLs
+
+```typescript
+bot.command('download', async (ctx) => {
+  const url = new URL('https://example.com/image.jpg')
+  const file = new InputFile(url)
+  
+  await ctx.replyWithPhoto(file, {
+    caption: 'Downloaded from URL'
+  })
+})
+```
+
+### Working with Blobs (Browser/Deno)
+
+```typescript
+bot.command('blob', async (ctx) => {
+  // Create a text file from string
+  const blob = new Blob(
+    ['This is the file content'],
+    { type: 'text/plain' }
+  )
+  
+  await ctx.replyWithDocument(
+    new InputFile(blob, 'example.txt')
+  )
+})
+```
+
+### Setting Custom Thumbnails
+
+Many file types accept custom thumbnails:
+
+```typescript
+bot.command('thumbnail', async (ctx) => {
+  await ctx.replyWithVideo(
+    new InputFile('/path/to/video.mp4'),
+    {
+      thumbnail: new InputFile('/path/to/custom_thumbnail.jpg'),
+      caption: 'Video with custom thumbnail'
+    }
+  )
+})
+```
+
+## File Identifiers vs InputFile
+
+Telegram provides file identifiers for uploaded files. You can reuse these without creating new `InputFile` instances:
+
+```typescript
+bot.on('message:photo', async (ctx) => {
+  // Get file_id from received photo
+  const fileId = ctx.message.photo[0].file_id
+  
+  // Reuse the file_id (no InputFile needed)
+  await ctx.api.sendPhoto(ctx.chat.id, fileId, {
+    caption: 'Same photo, reused via file_id'
+  })
+  
+  // Download and re-upload (requires InputFile)
+  const file = await ctx.api.getFile(fileId)
+  const path = file.file_path
+  await ctx.replyWithPhoto(
+    new InputFile(new URL(`https://api.telegram.org/file/bot${bot.token}/${path}`))
+  )
+})
+```
+
+## Platform-Specific Notes
+
+### Deno
+
+In Deno, you can pass file paths directly:
+
+```typescript
+// Works in Deno
+const file = new InputFile('/path/to/file.jpg')
+await ctx.replyWithPhoto(file)
+```
+
+### Node.js
+
+In Node.js, use `fs` module for file operations:
+
+```typescript
+import { createReadStream } from 'fs'
+import { InputFile } from 'grammy'
+
+// Use streams
+const stream = createReadStream('/path/to/file.jpg')
+const file = new InputFile(stream, 'file.jpg')
+await ctx.replyWithPhoto(file)
+```
+
+### Browser
+
+In browsers, work with `Blob` or `File` objects:
+
+```typescript
+// From file input
+const input = document.querySelector('input[type="file"]')
+const file = input.files[0] // This is a Blob
+
+await ctx.replyWithDocument(new InputFile(file))
+```
+
+## Error Handling
+
+```typescript
+bot.command('upload', async (ctx) => {
+  try {
+    const file = new InputFile('/path/to/file.jpg')
+    await ctx.replyWithPhoto(file)
+  } catch (error) {
+    console.error('Upload failed:', error)
+    await ctx.reply('Failed to upload file')
+  }
+})
+```
+
+## Important Notes
+
+- **File Reuse**: `InputFile` instances cannot be reused. Create a new instance for each upload operation.
+- **File Paths**: Only work in Deno environments. Use streams in Node.js.
+- **HTTP URLs**: Don't pass HTTP URLs as strings. Use `new URL(...)` instead.
+- **File IDs**: If you have a file_id from Telegram, pass it directly to API methods without wrapping in `InputFile`.
+- **File Size Limits**: Telegram has file size limits (20 MB for photos, 50 MB for other files via bot API).
+
+## Complete Example
+
+```typescript
+import { Bot, InputFile, InputMediaBuilder } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Single photo
+bot.command('photo', async (ctx) => {
+  await ctx.replyWithPhoto(
+    new InputFile('/photos/grammY.png'),
+    { caption: 'grammY logo' }
+  )
+})
+
+// Document with thumbnail
+bot.command('pdf', async (ctx) => {
+  await ctx.replyWithDocument(
+    new InputFile('/documents/guide.pdf'),
+    {
+      caption: 'User guide',
+      thumbnail: new InputFile('/thumbnails/pdf_thumb.jpg')
+    }
+  )
+})
+
+// Media group
+bot.command('gallery', async (ctx) => {
+  await ctx.replyWithMediaGroup([
+    InputMediaBuilder.photo(new InputFile('/gallery/img1.jpg'), {
+      caption: 'Photo 1'
+    }),
+    InputMediaBuilder.photo(new InputFile('/gallery/img2.jpg'), {
+      caption: 'Photo 2'
+    }),
+    InputMediaBuilder.video(new InputFile('/gallery/video.mp4'))
+  ])
+})
+
+// From URL
+bot.command('web', async (ctx) => {
+  const url = new URL('https://grammy.dev/images/grammY.png')
+  await ctx.replyWithPhoto(new InputFile(url))
+})
+
+// Lazy loading
+bot.command('user_file', async (ctx) => {
+  const file = new InputFile(
+    async () => {
+      const userData = await getUserData(ctx.from.id)
+      return userData.profilePicture
+    },
+    'profile.jpg'
+  )
+  
+  await ctx.replyWithPhoto(file)
+})
+
+bot.start()
+```
+
+## See Also
+
+- [Files Guide](https://grammy.dev/guide/files) - Complete file handling documentation
+- [Telegram Bot API: Sending Files](https://core.telegram.org/bots/api#sending-files)
+- [InputMedia Types](https://core.telegram.org/bots/api#inputmedia)

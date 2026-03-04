@@ -1,0 +1,537 @@
+---
+title: Creating Plugins
+description: Learn how to create custom middleware and plugins using the Composer API
+---
+
+Creating your own plugins allows you to encapsulate reusable functionality and share it across projects or with the community. This guide shows you how to build custom middleware and plugins using grammY's powerful Composer API.
+
+## Understanding Middleware
+
+At its core, a plugin is just middleware. Every middleware function receives two parameters:
+
+```typescript
+import { Context, NextFunction } from 'grammy'
+
+function myMiddleware(ctx: Context, next: NextFunction) {
+  // ctx: The context object with update information
+  // next: Function to call downstream middleware
+  
+  // Do something before downstream handlers
+  console.log('Before')
+  
+  // Pass control to the next middleware
+  await next()
+  
+  // Do something after downstream handlers
+  console.log('After')
+}
+```
+
+## Basic Plugin Structure
+
+A simple plugin is a function that returns middleware:
+
+```typescript
+import { Middleware } from 'grammy'
+
+function myPlugin(): Middleware {
+  return async (ctx, next) => {
+    // Plugin logic
+    await next()
+  }
+}
+
+// Usage
+bot.use(myPlugin())
+```
+
+## Plugin with Configuration
+
+Most plugins accept configuration options:
+
+```typescript
+interface MyPluginOptions {
+  prefix?: string
+  enabled?: boolean
+}
+
+function myPlugin(options: MyPluginOptions = {}): Middleware {
+  const { prefix = 'bot', enabled = true } = options
+  
+  return async (ctx, next) => {
+    if (!enabled) return next()
+    
+    console.log(`[${prefix}] Processing update`)
+    await next()
+  }
+}
+
+// Usage
+bot.use(myPlugin({ prefix: 'my-bot', enabled: true }))
+```
+
+## Adding Context Properties
+
+Plugins often extend the context object with new properties or methods.
+
+### Defining a Context Flavor
+
+```typescript
+import { Context } from 'grammy'
+
+// Define what your plugin adds to context
+interface MyPluginFlavor {
+  myFeature: {
+    doSomething: () => void
+    getValue: () => string
+  }
+}
+
+// Create a flavored context type
+type MyContext = Context & MyPluginFlavor
+```
+
+### Implementing the Plugin
+
+```typescript
+import { Middleware } from 'grammy'
+
+function myPlugin(): Middleware<MyContext> {
+  return (ctx, next) => {
+    // Add properties to context
+    ctx.myFeature = {
+      doSomething() {
+        console.log('Doing something!')
+      },
+      getValue() {
+        return 'Hello from plugin'
+      },
+    }
+    
+    return next()
+  }
+}
+```
+
+### Using the Flavored Plugin
+
+```typescript
+import { Bot } from 'grammy'
+
+const bot = new Bot<MyContext>('YOUR_BOT_TOKEN')
+
+bot.use(myPlugin())
+
+bot.on('message', (ctx) => {
+  // TypeScript knows about myFeature
+  ctx.myFeature.doSomething()
+  const value = ctx.myFeature.getValue()
+  ctx.reply(value)
+})
+```
+
+## Using the Composer Class
+
+The `Composer` class lets you build complex middleware systems:
+
+```typescript
+import { Composer } from 'grammy'
+
+function featurePlugin() {
+  const composer = new Composer()
+  
+  composer.command('start', (ctx) => {
+    return ctx.reply('Started!')
+  })
+  
+  composer.command('help', (ctx) => {
+    return ctx.reply('Help text')
+  })
+  
+  composer.on('message:text', (ctx) => {
+    console.log('Text message:', ctx.message.text)
+    return next()
+  })
+  
+  return composer
+}
+
+// Usage
+bot.use(featurePlugin())
+```
+
+## Middleware Object Pattern
+
+Implement the `MiddlewareObj` interface for advanced plugins:
+
+```typescript
+import { MiddlewareObj, MiddlewareFn } from 'grammy'
+
+class MyPlugin implements MiddlewareObj {
+  private config: Record<string, any>
+  
+  constructor(options = {}) {
+    this.config = options
+  }
+  
+  middleware(): MiddlewareFn {
+    return async (ctx, next) => {
+      // Access this.config
+      console.log('Config:', this.config)
+      await next()
+    }
+  }
+}
+
+// Usage
+bot.use(new MyPlugin({ key: 'value' }))
+```
+
+## Real-World Example: Logger Plugin
+
+Here's a complete example of a logging plugin:
+
+```typescript
+import { Context, Middleware } from 'grammy'
+
+interface LoggerOptions {
+  logUpdates?: boolean
+  logErrors?: boolean
+  prefix?: string
+}
+
+function logger(options: LoggerOptions = {}): Middleware {
+  const {
+    logUpdates = true,
+    logErrors = true,
+    prefix = 'BOT',
+  } = options
+  
+  return async (ctx, next) => {
+    const start = Date.now()
+    
+    if (logUpdates) {
+      console.log(
+        `[${prefix}] Update ${ctx.update.update_id} from ${
+          ctx.from?.id || 'unknown'
+        }`
+      )
+    }
+    
+    try {
+      await next()
+    } catch (error) {
+      if (logErrors) {
+        console.error(`[${prefix}] Error:`, error)
+      }
+      throw error
+    } finally {
+      const duration = Date.now() - start
+      console.log(`[${prefix}] Processed in ${duration}ms`)
+    }
+  }
+}
+
+// Usage
+bot.use(logger({ prefix: 'MY-BOT' }))
+```
+
+## Real-World Example: Rate Limiter
+
+A rate limiting plugin to prevent spam:
+
+```typescript
+import { Middleware } from 'grammy'
+
+interface RateLimitOptions {
+  timeWindow?: number // milliseconds
+  limit?: number      // max requests per window
+}
+
+function rateLimit(options: RateLimitOptions = {}): Middleware {
+  const { timeWindow = 1000, limit = 5 } = options
+  const requests = new Map<number, number[]>()
+  
+  return async (ctx, next) => {
+    const userId = ctx.from?.id
+    if (!userId) return next()
+    
+    const now = Date.now()
+    const userRequests = requests.get(userId) || []
+    
+    // Remove old requests outside the time window
+    const recentRequests = userRequests.filter(
+      (time) => now - time < timeWindow
+    )
+    
+    if (recentRequests.length >= limit) {
+      return ctx.reply('Too many requests. Please slow down.')
+    }
+    
+    recentRequests.push(now)
+    requests.set(userId, recentRequests)
+    
+    await next()
+  }
+}
+
+// Usage
+bot.use(rateLimit({ timeWindow: 60000, limit: 10 }))
+```
+
+## Real-World Example: Translation Plugin
+
+A plugin that adds translation capabilities:
+
+```typescript
+import { Context, Middleware } from 'grammy'
+
+interface Translations {
+  [locale: string]: {
+    [key: string]: string
+  }
+}
+
+interface I18nFlavor {
+  t: (key: string) => string
+  locale: string
+}
+
+type I18nContext = Context & I18nFlavor
+
+function i18n(translations: Translations): Middleware<I18nContext> {
+  return (ctx, next) => {
+    // Detect user's language (simplified)
+    const locale = ctx.from?.language_code || 'en'
+    
+    ctx.locale = locale
+    ctx.t = (key: string) => {
+      return translations[locale]?.[key] || translations.en?.[key] || key
+    }
+    
+    return next()
+  }
+}
+
+// Usage
+const translations = {
+  en: {
+    welcome: 'Welcome!',
+    goodbye: 'Goodbye!',
+  },
+  es: {
+    welcome: '¡Bienvenido!',
+    goodbye: '¡Adiós!',
+  },
+}
+
+const bot = new Bot<I18nContext>('YOUR_BOT_TOKEN')
+bot.use(i18n(translations))
+
+bot.command('start', (ctx) => {
+  return ctx.reply(ctx.t('welcome'))
+})
+```
+
+## Advanced: Lazy Middleware
+
+Create middleware that's generated on-the-fly:
+
+```typescript
+import { Composer } from 'grammy'
+
+function dynamicPlugin() {
+  const composer = new Composer()
+  
+  composer.lazy((ctx) => {
+    // Generate middleware based on the context
+    if (ctx.from?.is_premium) {
+      return premiumFeatures
+    } else {
+      return basicFeatures
+    }
+  })
+  
+  return composer
+}
+```
+
+## Advanced: Fork and Concurrency
+
+Run middleware concurrently:
+
+```typescript
+import { Composer } from 'grammy'
+
+function analyticsPlugin() {
+  const composer = new Composer()
+  
+  // Fork: runs concurrently with other middleware
+  composer.fork(async (ctx) => {
+    // Log analytics without blocking the main flow
+    await logToAnalytics(ctx.update)
+  })
+  
+  composer.on('message', (ctx) => {
+    // This runs in parallel with the fork
+    return ctx.reply('Got your message!')
+  })
+  
+  return composer
+}
+```
+
+## Advanced: Error Boundaries
+
+Create safe plugin zones:
+
+```typescript
+import { Composer } from 'grammy'
+
+function safePlugin() {
+  const composer = new Composer()
+  
+  composer.errorBoundary(
+    (err) => {
+      console.error('Plugin error:', err)
+    },
+    riskyMiddleware1,
+    riskyMiddleware2
+  )
+  
+  return composer
+}
+```
+
+## Advanced: Filter and Branch
+
+Conditional middleware execution:
+
+```typescript
+import { Composer } from 'grammy'
+
+function conditionalPlugin() {
+  const composer = new Composer()
+  
+  // Only run for private chats
+  composer.filter(
+    (ctx) => ctx.chat?.type === 'private',
+    privateHandler
+  )
+  
+  // Branch based on condition
+  composer.branch(
+    (ctx) => ctx.from?.is_bot,
+    botHandler,
+    userHandler
+  )
+  
+  return composer
+}
+```
+
+## Testing Your Plugin
+
+Always test your plugins:
+
+```typescript
+import { Bot, Context } from 'grammy'
+
+// Create a test context
+function createMockContext(): Context {
+  return {
+    update: { update_id: 1, message: { /* ... */ } },
+    api: /* mock API */,
+    // ... other required properties
+  } as any
+}
+
+// Test the plugin
+async function testPlugin() {
+  const bot = new Bot('fake-token')
+  bot.use(myPlugin())
+  
+  const ctx = createMockContext()
+  await bot.handleUpdate(ctx.update)
+  
+  // Assert expected behavior
+}
+```
+
+## Best Practices
+
+1. **Type Safety** - Always define context flavors for TypeScript support
+2. **Configuration** - Accept options to make plugins flexible
+3. **Error Handling** - Handle errors gracefully, don't crash the bot
+4. **Documentation** - Document your plugin's API and usage
+5. **Testing** - Write tests for your plugin logic
+6. **Performance** - Avoid blocking operations in middleware
+7. **Composability** - Make plugins work well with others
+8. **Naming** - Use clear, descriptive names for your plugins
+
+## Publishing Your Plugin
+
+To share your plugin with the community:
+
+1. Create a separate npm package
+2. Use clear naming: `grammy-plugin-name` or `@yourscope/grammy-plugin-name`
+3. Include TypeScript types
+4. Write comprehensive documentation
+5. Add examples and tests
+6. Publish to npm
+
+```json
+{
+  "name": "grammy-plugin-example",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "peerDependencies": {
+    "grammy": "^1.0.0"
+  }
+}
+```
+
+## Example: Complete Plugin Template
+
+```typescript
+import { Context, Middleware } from 'grammy'
+
+// 1. Define the context flavor
+export interface MyPluginFlavor {
+  myPlugin: {
+    // Add your methods here
+  }
+}
+
+export type MyPluginContext = Context & MyPluginFlavor
+
+// 2. Define options
+export interface MyPluginOptions {
+  // Add configuration options
+}
+
+// 3. Implement the plugin
+export function myPlugin(
+  options: MyPluginOptions = {}
+): Middleware<MyPluginContext> {
+  return (ctx, next) => {
+    // Add functionality to context
+    ctx.myPlugin = {
+      // Implement methods
+    }
+    
+    return next()
+  }
+}
+
+// 4. Export everything
+export default myPlugin
+```
+
+## Next Steps
+
+- Review [Built-in Plugins](/plugins/built-in) for implementation examples
+- Explore the [Middleware guide](/advanced/middleware) for advanced patterns
+- Check out [official plugins](https://grammy.dev/plugins/) source code
+- Join the grammY community to share your plugins

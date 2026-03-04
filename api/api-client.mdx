@@ -1,0 +1,901 @@
+---
+title: API Client
+description: Direct access to the Telegram Bot API
+icon: code
+---
+
+The `Api` class provides full access to the Telegram Bot API. All methods are available with convenient parameter handling and optional `AbortSignal` support for canceling requests.
+
+## Overview
+
+The API client is available through:
+- `bot.api` - On the Bot instance
+- `ctx.api` - On the Context object (preferred inside middleware)
+
+It provides:
+- Type-safe access to all Telegram Bot API methods
+- Automatic error handling with `GrammyError` and `HttpError`
+- Request transformation via the transformer system
+- Webhook reply optimization
+
+## Constructor
+
+```typescript
+new Api(token: string, options?: ApiClientOptions, webhookReplyEnvelope?: WebhookReplyEnvelope)
+```
+
+<ParamField path="token" type="string" required>
+  Bot API token obtained from [@BotFather](https://t.me/BotFather)
+</ParamField>
+
+<ParamField path="options" type="ApiClientOptions">
+  Optional API client configuration
+  
+  <Expandable title="ApiClientOptions properties">
+    <ParamField path="apiRoot" type="string">
+      Root URL of the Telegram Bot API server. Default: `https://api.telegram.org`
+    </ParamField>
+    
+    <ParamField path="environment" type="'prod' | 'test'">
+      Use production or test environment. Default: `'prod'`
+      
+      The test environment is separate from production with no shared data. You'll need to register a new bot with @BotFather in the test environment.
+    </ParamField>
+    
+    <ParamField path="buildUrl" type="(root: string, token: string, method: string, env: string) => string | URL">
+      Custom URL builder function for API calls
+    </ParamField>
+    
+    <ParamField path="timeoutSeconds" type="number">
+      Maximum seconds for a request. Default: 500 (8 minutes 20 seconds)
+    </ParamField>
+    
+    <ParamField path="canUseWebhookReply" type="(method: string) => boolean">
+      Function to determine if webhook reply should be used for a method
+    </ParamField>
+    
+    <ParamField path="baseFetchConfig" type="RequestInit">
+      Base configuration for `fetch` calls
+    </ParamField>
+    
+    <ParamField path="fetch" type="typeof fetch">
+      Custom `fetch` function to use for HTTP requests
+    </ParamField>
+    
+    <ParamField path="sensitiveLogs" type="boolean">
+      Include bot token in error messages for debugging. Default: `false`
+      
+      **Warning:** Only enable this in secure environments where logs are never shared publicly.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="webhookReplyEnvelope" type="WebhookReplyEnvelope">
+  Optional webhook reply envelope for optimized webhook responses
+</ParamField>
+
+## Properties
+
+<ResponseField name="raw" type="RawApi">
+  Provides raw access to all Telegram Bot API methods with 1:1 method signatures as documented on the [official API reference](https://core.telegram.org/bots/api).
+  
+  ```typescript
+  // Raw API call
+  await bot.api.raw.sendMessage({
+    chat_id: 123456,
+    text: 'Hello!',
+    parse_mode: 'Markdown'
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="config" type="object">
+  Configuration namespace for advanced API operations.
+  
+  <Expandable title="config properties">
+    <ResponseField name="use" type="(...transformers: Transformer[]) => void">
+      Install API request transformer functions. Transformers can modify method and payload before sending.
+      
+      ```typescript
+      bot.api.config.use((prev, method, payload, signal) => {
+        console.log(`Calling ${method}`)
+        return prev(method, payload, signal)
+      })
+      ```
+    </ResponseField>
+    
+    <ResponseField name="installedTransformers" type="() => Transformer[]">
+      Returns array of currently installed transformers
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Common Methods
+
+All methods take an optional `AbortSignal` as the last parameter to cancel requests.
+
+### getMe
+
+Returns basic information about the bot.
+
+```typescript
+await api.getMe(signal?: AbortSignal): Promise<UserFromGetMe>
+```
+
+**Example:**
+
+```typescript
+const botInfo = await bot.api.getMe()
+console.log(`Bot username: @${botInfo.username}`)
+```
+
+### sendMessage
+
+Sends a text message.
+
+```typescript
+await api.sendMessage(
+  chat_id: number | string,
+  text: string,
+  other?: SendMessageOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+<ParamField path="chat_id" type="number | string" required>
+  Unique identifier for the target chat or username of the target channel (in the format @channelusername)
+</ParamField>
+
+<ParamField path="text" type="string" required>
+  Text of the message to send (1-4096 characters after entities parsing)
+</ParamField>
+
+<ParamField path="other" type="object">
+  Optional parameters:
+  - `parse_mode`: 'Markdown', 'MarkdownV2', or 'HTML'
+  - `entities`: List of special entities
+  - `reply_markup`: Inline keyboard, custom keyboard, etc.
+  - `link_preview_options`: Link preview settings
+  - And more...
+</ParamField>
+
+**Example:**
+
+```typescript
+await bot.api.sendMessage(chatId, 'Hello, **world**!', {
+  parse_mode: 'Markdown',
+  reply_markup: {
+    inline_keyboard: [[
+      { text: 'Click me', callback_data: 'button_click' }
+    ]]
+  }
+})
+```
+
+### sendPhoto
+
+Sends a photo.
+
+```typescript
+await api.sendPhoto(
+  chat_id: number | string,
+  photo: InputFile | string,
+  other?: SendPhotoOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+<ParamField path="photo" type="InputFile | string" required>
+  Photo to send. Pass:
+  - `file_id` as string (recommended for existing Telegram files)
+  - HTTP URL as string
+  - `InputFile` for uploading new files
+</ParamField>
+
+**Example:**
+
+```typescript
+import { InputFile } from 'grammy'
+
+// Upload from file system
+await bot.api.sendPhoto(
+  chatId,
+  new InputFile('/path/to/photo.jpg'),
+  { caption: 'Check this out!' }
+)
+
+// From URL
+await bot.api.sendPhoto(
+  chatId,
+  'https://example.com/photo.jpg'
+)
+
+// From file_id
+await bot.api.sendPhoto(chatId, 'AgACAgIAAxkBAAI...')
+```
+
+### sendDocument
+
+Sends a document file.
+
+```typescript
+await api.sendDocument(
+  chat_id: number | string,
+  document: InputFile | string,
+  other?: SendDocumentOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendAudio
+
+Sends an audio file.
+
+```typescript
+await api.sendAudio(
+  chat_id: number | string,
+  audio: InputFile | string,
+  other?: SendAudioOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendVideo
+
+Sends a video file.
+
+```typescript
+await api.sendVideo(
+  chat_id: number | string,
+  video: InputFile | string,
+  other?: SendVideoOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendAnimation
+
+Sends an animation (GIF or H.264/MPEG-4 AVC video without sound).
+
+```typescript
+await api.sendAnimation(
+  chat_id: number | string,
+  animation: InputFile | string,
+  other?: SendAnimationOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendVoice
+
+Sends a voice message (OGG encoded with OPUS).
+
+```typescript
+await api.sendVoice(
+  chat_id: number | string,
+  voice: InputFile | string,
+  other?: SendVoiceOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendVideoNote
+
+Sends a video note (round video message).
+
+```typescript
+await api.sendVideoNote(
+  chat_id: number | string,
+  video_note: InputFile | string,
+  other?: SendVideoNoteOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendMediaGroup
+
+Sends a group of photos, videos, documents or audios as an album.
+
+```typescript
+await api.sendMediaGroup(
+  chat_id: number | string,
+  media: InputMedia[],
+  other?: SendMediaGroupOptions,
+  signal?: AbortSignal
+): Promise<Message[]>
+```
+
+**Example:**
+
+```typescript
+await bot.api.sendMediaGroup(chatId, [
+  {
+    type: 'photo',
+    media: 'https://example.com/photo1.jpg',
+    caption: 'Photo 1'
+  },
+  {
+    type: 'photo',
+    media: new InputFile('/path/to/photo2.jpg'),
+    caption: 'Photo 2'
+  }
+])
+```
+
+### sendLocation
+
+Sends a location point on the map.
+
+```typescript
+await api.sendLocation(
+  chat_id: number | string,
+  latitude: number,
+  longitude: number,
+  other?: SendLocationOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendVenue
+
+Sends information about a venue.
+
+```typescript
+await api.sendVenue(
+  chat_id: number | string,
+  latitude: number,
+  longitude: number,
+  title: string,
+  address: string,
+  other?: SendVenueOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendContact
+
+Sends a phone contact.
+
+```typescript
+await api.sendContact(
+  chat_id: number | string,
+  phone_number: string,
+  first_name: string,
+  other?: SendContactOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### sendPoll
+
+Sends a native poll.
+
+```typescript
+await api.sendPoll(
+  chat_id: number | string,
+  question: string,
+  options: string[] | InputPollOption[],
+  other?: SendPollOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+**Example:**
+
+```typescript
+await bot.api.sendPoll(
+  chatId,
+  'What is your favorite color?',
+  ['Red', 'Blue', 'Green'],
+  {
+    is_anonymous: false,
+    allows_multiple_answers: true
+  }
+)
+```
+
+### sendDice
+
+Sends an animated emoji with a random value.
+
+```typescript
+await api.sendDice(
+  chat_id: number | string,
+  emoji: '🎲' | '🎯' | '🏀' | '⚽' | '🎳' | '🎰',
+  other?: SendDiceOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+## Message Management
+
+### editMessageText
+
+Edits text and game messages.
+
+```typescript
+// Regular message
+await api.editMessageText(
+  chat_id: number | string,
+  message_id: number,
+  text: string,
+  other?: EditMessageTextOptions,
+  signal?: AbortSignal
+): Promise<Message | true>
+
+// Inline message
+await api.editMessageTextInline(
+  inline_message_id: string,
+  text: string,
+  other?: EditMessageTextOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### editMessageReplyMarkup
+
+Edits only the reply markup of messages.
+
+```typescript
+await api.editMessageReplyMarkup(
+  chat_id: number | string,
+  message_id: number,
+  other?: EditMessageReplyMarkupOptions,
+  signal?: AbortSignal
+): Promise<Message | true>
+```
+
+### deleteMessage
+
+Deletes a message.
+
+```typescript
+await api.deleteMessage(
+  chat_id: number | string,
+  message_id: number,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### deleteMessages
+
+Deletes multiple messages simultaneously.
+
+```typescript
+await api.deleteMessages(
+  chat_id: number | string,
+  message_ids: number[],
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### forwardMessage
+
+Forwards a message.
+
+```typescript
+await api.forwardMessage(
+  chat_id: number | string,
+  from_chat_id: number | string,
+  message_id: number,
+  other?: ForwardMessageOptions,
+  signal?: AbortSignal
+): Promise<Message>
+```
+
+### copyMessage
+
+Copies a message (without the forward header).
+
+```typescript
+await api.copyMessage(
+  chat_id: number | string,
+  from_chat_id: number | string,
+  message_id: number,
+  other?: CopyMessageOptions,
+  signal?: AbortSignal
+): Promise<MessageId>
+```
+
+## Chat Management
+
+### getChat
+
+Gets up-to-date information about the chat.
+
+```typescript
+await api.getChat(
+  chat_id: number | string,
+  signal?: AbortSignal
+): Promise<Chat>
+```
+
+### getChatAdministrators
+
+Gets a list of administrators in a chat.
+
+```typescript
+await api.getChatAdministrators(
+  chat_id: number | string,
+  signal?: AbortSignal
+): Promise<ChatMember[]>
+```
+
+### getChatMemberCount
+
+Gets the number of members in a chat.
+
+```typescript
+await api.getChatMemberCount(
+  chat_id: number | string,
+  signal?: AbortSignal
+): Promise<number>
+```
+
+### getChatMember
+
+Gets information about a member of a chat.
+
+```typescript
+await api.getChatMember(
+  chat_id: number | string,
+  user_id: number,
+  signal?: AbortSignal
+): Promise<ChatMember>
+```
+
+### banChatMember
+
+Bans a user in a group, supergroup or channel.
+
+```typescript
+await api.banChatMember(
+  chat_id: number | string,
+  user_id: number,
+  other?: BanChatMemberOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### unbanChatMember
+
+Unbans a previously banned user.
+
+```typescript
+await api.unbanChatMember(
+  chat_id: number | string,
+  user_id: number,
+  other?: UnbanChatMemberOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### restrictChatMember
+
+Restricts a user in a supergroup.
+
+```typescript
+await api.restrictChatMember(
+  chat_id: number | string,
+  user_id: number,
+  permissions: ChatPermissions,
+  other?: RestrictChatMemberOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### promoteChatMember
+
+Promotes or demotes a user in a supergroup or channel.
+
+```typescript
+await api.promoteChatMember(
+  chat_id: number | string,
+  user_id: number,
+  other?: PromoteChatMemberOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### leaveChat
+
+Leaves a group, supergroup or channel.
+
+```typescript
+await api.leaveChat(
+  chat_id: number | string,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+## Callback Queries
+
+### answerCallbackQuery
+
+Answers a callback query from an inline button.
+
+```typescript
+await api.answerCallbackQuery(
+  callback_query_id: string,
+  other?: AnswerCallbackQueryOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+**Example:**
+
+```typescript
+await bot.api.answerCallbackQuery(queryId, {
+  text: 'Button clicked!',
+  show_alert: true
+})
+```
+
+## Inline Queries
+
+### answerInlineQuery
+
+Answers an inline query.
+
+```typescript
+await api.answerInlineQuery(
+  inline_query_id: string,
+  results: InlineQueryResult[],
+  other?: AnswerInlineQueryOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+**Example:**
+
+```typescript
+await bot.api.answerInlineQuery(queryId, [
+  {
+    type: 'article',
+    id: '1',
+    title: 'Result 1',
+    input_message_content: {
+      message_text: 'Content 1'
+    }
+  }
+], {
+  cache_time: 300
+})
+```
+
+## Bot Information
+
+### setMyCommands
+
+Sets the list of the bot's commands.
+
+```typescript
+await api.setMyCommands(
+  commands: BotCommand[],
+  other?: SetMyCommandsOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+**Example:**
+
+```typescript
+await bot.api.setMyCommands([
+  { command: 'start', description: 'Start the bot' },
+  { command: 'help', description: 'Show help' },
+  { command: 'settings', description: 'Open settings' }
+])
+```
+
+### getMyCommands
+
+Gets the current list of the bot's commands.
+
+```typescript
+await api.getMyCommands(
+  other?: GetMyCommandsOptions,
+  signal?: AbortSignal
+): Promise<BotCommand[]>
+```
+
+### setMyName
+
+Changes the bot's name.
+
+```typescript
+await api.setMyName(
+  name: string,
+  other?: SetMyNameOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### setMyDescription
+
+Changes the bot's description.
+
+```typescript
+await api.setMyDescription(
+  description: string,
+  other?: SetMyDescriptionOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+## Webhooks
+
+### setWebhook
+
+Sets a webhook URL to receive updates.
+
+```typescript
+await api.setWebhook(
+  url: string,
+  other?: SetWebhookOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### deleteWebhook
+
+Removes webhook integration.
+
+```typescript
+await api.deleteWebhook(
+  other?: DeleteWebhookOptions,
+  signal?: AbortSignal
+): Promise<true>
+```
+
+### getWebhookInfo
+
+Gets current webhook status.
+
+```typescript
+await api.getWebhookInfo(
+  signal?: AbortSignal
+): Promise<WebhookInfo>
+```
+
+## Updates
+
+### getUpdates
+
+Receives incoming updates using long polling.
+
+```typescript
+await api.getUpdates(
+  other?: GetUpdatesOptions,
+  signal?: AbortSignal
+): Promise<Update[]>
+```
+
+**Note:** This method should not be called manually when using `bot.start()`. It's used internally by grammY.
+
+## Transformers
+
+Transformers allow you to modify API calls before they are sent to Telegram.
+
+```typescript
+bot.api.config.use(async (prev, method, payload, signal) => {
+  // Log all API calls
+  console.log(`Calling ${method}`)
+  
+  // Modify payload
+  if (method === 'sendMessage') {
+    payload.parse_mode = 'Markdown'
+  }
+  
+  // Call the API
+  const result = await prev(method, payload, signal)
+  
+  // Log result
+  console.log(`${method} completed`)
+  
+  return result
+})
+```
+
+**Common use cases:**
+- Rate limiting
+- Logging
+- Default parameters
+- Request retrying
+- Caching
+
+## Error Handling
+
+The API client throws two types of errors:
+
+### GrammyError
+
+Thrown when the Telegram API returns an error response.
+
+```typescript
+import { GrammyError } from 'grammy'
+
+try {
+  await bot.api.sendMessage(chatId, 'Hello')
+} catch (error) {
+  if (error instanceof GrammyError) {
+    console.error('API Error:', error.error_code, error.description)
+    // error.method - The failed method
+    // error.parameters - Extra parameters (e.g., retry_after)
+  }
+}
+```
+
+### HttpError
+
+Thrown when the HTTP request fails (network error, timeout, etc.).
+
+```typescript
+import { HttpError } from 'grammy'
+
+try {
+  await bot.api.getMe()
+} catch (error) {
+  if (error instanceof HttpError) {
+    console.error('Network error:', error.message)
+  }
+}
+```
+
+## Complete Example
+
+```typescript
+import { Bot, InputFile, GrammyError } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN', {
+  client: {
+    apiRoot: 'https://api.telegram.org',
+    timeoutSeconds: 60
+  }
+})
+
+// Use transformers for logging
+bot.api.config.use(async (prev, method, payload) => {
+  console.log(`API call: ${method}`)
+  return await prev(method, payload)
+})
+
+bot.command('start', async (ctx) => {
+  // Send text with keyboard
+  await ctx.api.sendMessage(ctx.chatId!, 'Welcome!', {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: 'Button', callback_data: 'btn' }
+      ]]
+    }
+  })
+  
+  // Send photo
+  await ctx.api.sendPhoto(
+    ctx.chatId!,
+    new InputFile('/path/to/image.jpg'),
+    { caption: 'Check this out!' }
+  )
+  
+  // Get chat info
+  const chat = await ctx.api.getChat(ctx.chatId!)
+  console.log('Chat title:', chat.title)
+})
+
+bot.catch((err) => {
+  const error = err.error
+  if (error instanceof GrammyError) {
+    console.error('Telegram error:', error.description)
+  } else {
+    console.error('Unknown error:', error)
+  }
+})
+
+bot.start()
+```
+
+## See Also
+
+- [Bot](/api/bot) - The main Bot class
+- [Context](/api/context) - Context shortcuts for API calls
+- [Telegram Bot API](https://core.telegram.org/bots/api) - Official API reference
+- [Transformers](https://grammy.dev/advanced/transformers) - Advanced transformer usage

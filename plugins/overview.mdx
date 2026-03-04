@@ -1,0 +1,229 @@
+---
+title: Plugin Overview
+description: Understanding the grammY plugin architecture and ecosystem
+---
+
+Plugins are a powerful way to extend your grammY bot's functionality. They allow you to add features without cluttering your main bot logic, making your code more modular and maintainable.
+
+## What are Plugins?
+
+In grammY, a plugin is simply **middleware** that provides a specific feature or functionality. Since grammY's middleware system is extremely flexible, plugins can:
+
+- Add properties to the context object
+- Process updates before they reach your handlers
+- Provide helper methods and utilities
+- Manage state and session data
+- Integrate with external services
+
+## The Middleware Foundation
+
+Every plugin in grammY is built on top of the middleware system. Understanding middleware is key to understanding plugins:
+
+```typescript
+// A simple middleware function
+function myMiddleware(ctx: Context, next: NextFunction) {
+  // Do something before downstream handlers
+  console.log('Received update:', ctx.update.update_id)
+  
+  // Call downstream middleware
+  await next()
+  
+  // Do something after downstream handlers
+  console.log('Finished processing update')
+}
+
+bot.use(myMiddleware)
+```
+
+## Plugin Types
+
+grammY plugins come in two main categories:
+
+### Built-in Plugins
+
+These are utilities that ship with grammY core:
+
+- **Session** - Persistent data storage per chat/user
+- **Keyboard Builders** - Simplified keyboard creation (Keyboard, InlineKeyboard)
+- **Webhook Callback** - Easy webhook integration
+- **Inline Query Builder** - Helper for inline query results
+
+See the [Built-in Plugins](/plugins/built-in) page for detailed documentation.
+
+### Official Plugins
+
+These are maintained by the grammY team but distributed separately:
+
+- **Router** - Route updates to different handlers
+- **Menu** - Interactive menus with inline keyboards
+- **Conversations** - Stateful, step-by-step user interactions
+- **I18n** - Internationalization and localization
+- **Hydrate** - Easy message and callback query editing
+- **Files** - Simplified file handling
+- **Transformer** - Modify API requests before sending
+- **Ratelimiter** - Prevent spam and abuse
+- **Stateless Question** - Ask questions without sessions
+- **Autoquote** - Automatically quote replied messages
+- **Parse Mode** - Set default parse mode
+- **Emoji** - Type-safe emoji support
+
+## Using Plugins
+
+Most plugins are installed using the `bot.use()` method:
+
+```typescript
+import { Bot, session } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Install a plugin
+bot.use(session())
+
+// Chain multiple plugins
+bot.use(session())
+   .use(someOtherPlugin())
+```
+
+## Plugin Installation Pattern
+
+Typical plugin usage follows this pattern:
+
+```typescript
+import { Bot } from 'grammy'
+import { somePlugin } from '@grammyjs/some-plugin'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Configure and install the plugin
+bot.use(somePlugin({
+  // Plugin-specific options
+  option1: 'value1',
+  option2: 'value2',
+}))
+
+// Use the plugin's features in your handlers
+bot.on('message', (ctx) => {
+  // Access plugin-added features via ctx
+  ctx.pluginFeature()
+})
+```
+
+## Context Flavors
+
+Many plugins extend the context object with additional properties and methods using **context flavors**:
+
+```typescript
+import { Bot, Context, SessionFlavor, session } from 'grammy'
+
+// Define your session data structure
+interface SessionData {
+  messageCount: number
+}
+
+// Create a custom context type with the session flavor
+type MyContext = Context & SessionFlavor<SessionData>
+
+// Use the flavored context
+const bot = new Bot<MyContext>('YOUR_BOT_TOKEN')
+
+bot.use(session({ initial: () => ({ messageCount: 0 }) }))
+
+bot.on('message', (ctx) => {
+  // TypeScript now knows about ctx.session
+  ctx.session.messageCount++
+  ctx.reply(`You've sent ${ctx.session.messageCount} messages!`)
+})
+```
+
+## Plugin Composition
+
+Plugins can be composed together using the `Composer` class:
+
+```typescript
+import { Composer } from 'grammy'
+
+const feature = new Composer()
+
+feature.command('start', (ctx) => ctx.reply('Welcome!'))
+feature.command('help', (ctx) => ctx.reply('Help text'))
+feature.on('message', (ctx) => ctx.reply('Got your message!'))
+
+// Install the composed plugin
+bot.use(feature)
+```
+
+## Plugin Execution Order
+
+Plugins execute in the order they're installed:
+
+```typescript
+bot.use(plugin1) // Runs first
+bot.use(plugin2) // Runs second
+bot.use(plugin3) // Runs third
+
+// Order matters!
+bot.use(session())     // Must be before plugins that use session
+bot.use(router)        // Can now access ctx.session
+```
+
+## Conditional Plugin Installation
+
+You can install plugins conditionally:
+
+```typescript
+bot.filter(
+  (ctx) => ctx.chat?.type === 'private',
+  session({ initial: () => ({}) })
+)
+
+// Or using branching
+bot.branch(
+  (ctx) => ctx.from?.is_premium,
+  premiumFeatures,
+  basicFeatures
+)
+```
+
+## Error Handling in Plugins
+
+Plugins can throw errors that bubble up to your error handler:
+
+```typescript
+bot.use(async (ctx, next) => {
+  try {
+    await next()
+  } catch (error) {
+    console.error('Plugin error:', error)
+    await ctx.reply('Something went wrong!')
+  }
+})
+
+bot.use(riskyPlugin())
+```
+
+## Plugin Best Practices
+
+1. **Install plugins early** - Install plugins like session before your handlers
+2. **Use type-safe flavors** - Leverage TypeScript's context flavors for type safety
+3. **Keep plugins focused** - Each plugin should do one thing well
+4. **Document dependencies** - Note which plugins depend on others
+5. **Handle errors gracefully** - Don't let plugin errors crash your bot
+6. **Test plugin interactions** - Ensure plugins work well together
+
+## Finding Plugins
+
+Official plugins are available in the `@grammyjs` namespace on npm:
+
+```bash
+npm install @grammyjs/router
+npm install @grammyjs/menu
+npm install @grammyjs/conversations
+```
+
+You can also find community plugins by searching for "grammy" or "grammy-plugin" on npm.
+
+## Next Steps
+
+- Learn about [Built-in Plugins](/plugins/built-in) that ship with grammY
+- Discover how to [Create Your Own Plugins](/plugins/creating-plugins)
+- Explore the [official plugins](https://grammy.dev/plugins/) on the grammY website

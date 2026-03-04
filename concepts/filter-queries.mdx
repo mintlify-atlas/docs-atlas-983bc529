@@ -1,0 +1,570 @@
+---
+title: 'Filter Queries'
+description: 'Filter queries provide a powerful and concise way to match specific updates'
+---
+
+Filter queries are a concise syntax for specifying which updates your middleware should handle. They let you write `bot.on('message:text')` instead of checking `if (ctx.message?.text)`.
+
+## What are Filter Queries?
+
+A filter query is a string that describes which updates to match. Filter queries work with `bot.on()` and automatically narrow the TypeScript types.
+
+```typescript
+// Without filter queries
+bot.use((ctx) => {
+  if (ctx.message && ctx.message.text) {
+    const text: string | undefined = ctx.message.text // Still possibly undefined!
+  }
+})
+
+// With filter queries
+bot.on('message:text', (ctx) => {
+  const text: string = ctx.message.text // Guaranteed to be string!
+})
+```
+
+## Filter Query Syntax
+
+Filter queries have three levels:
+
+```
+L1:L2:L3
+```
+
+- **L1**: Update type (`message`, `callback_query`, etc.)
+- **L2**: Property on the update type (`text`, `photo`, etc.)
+- **L3**: Nested property (`entities`, specific entity types, etc.)
+
+### Level 1 - Update Types
+
+```typescript
+// Match specific update types
+bot.on('message', ctx => { /* New messages */ })
+bot.on('edited_message', ctx => { /* Edited messages */ })
+bot.on('callback_query', ctx => { /* Button clicks */ })
+bot.on('inline_query', ctx => { /* Inline queries */ })
+bot.on('message_reaction', ctx => { /* Reactions */ })
+```
+
+Available L1 filters:
+- `message` - New messages
+- `edited_message` - Edited messages
+- `channel_post` - New channel posts
+- `edited_channel_post` - Edited channel posts
+- `business_connection` - Business connection updates
+- `business_message` - Business account messages
+- `edited_business_message` - Edited business messages
+- `deleted_business_messages` - Deleted business messages
+- `inline_query` - Inline queries
+- `chosen_inline_result` - Chosen inline results
+- `callback_query` - Callback queries
+- `shipping_query` - Shipping queries
+- `pre_checkout_query` - Pre-checkout queries
+- `poll` - Poll updates
+- `poll_answer` - Poll answers
+- `my_chat_member` - Bot's chat member status changed
+- `chat_member` - Chat member status changed
+- `chat_join_request` - Join requests
+- `message_reaction` - Message reactions
+- `message_reaction_count` - Reaction counts
+- `chat_boost` - Chat boosts
+- `removed_chat_boost` - Removed boosts
+- `purchased_paid_media` - Paid media purchases
+
+### Level 2 - Message Properties
+
+```typescript
+// Match messages with specific content
+bot.on('message:text', ctx => { /* Text messages */ })
+bot.on('message:photo', ctx => { /* Photos */ })
+bot.on('message:video', ctx => { /* Videos */ })
+bot.on('message:document', ctx => { /* Documents */ })
+bot.on('message:sticker', ctx => { /* Stickers */ })
+```
+
+Common L2 filters:
+- `:text` - Text messages
+- `:photo` - Photos
+- `:video` - Videos
+- `:audio` - Audio files
+- `:document` - Documents
+- `:animation` - Animations/GIFs
+- `:voice` - Voice messages
+- `:video_note` - Video notes
+- `:sticker` - Stickers
+- `:location` - Locations
+- `:contact` - Contacts
+- `:poll` - Polls
+- `:dice` - Dice
+- `:game` - Games
+- `:invoice` - Invoices
+
+### Level 3 - Nested Properties
+
+```typescript
+// Match messages with specific entities
+bot.on('message:entities:url', ctx => {
+  // Messages with URL entities
+  const urls = ctx.entities('url')
+})
+
+bot.on('message:entities:mention', ctx => {
+  // Messages with @mentions
+})
+
+bot.on('message:entities:hashtag', ctx => {
+  // Messages with #hashtags
+})
+```
+
+Entity types (L3 for `:entities` or `:caption_entities`):
+- `:mention` - @username mentions
+- `:hashtag` - #hashtag
+- `:cashtag` - $USD
+- `:bot_command` - /command
+- `:url` - https://example.com
+- `:email` - email@example.com
+- `:phone_number` - Phone numbers
+- `:bold` - Bold text
+- `:italic` - Italic text
+- `:underline` - Underlined text
+- `:strikethrough` - Strikethrough text
+- `:spoiler` - Spoiler text
+- `:code` - Inline code
+- `:pre` - Code blocks
+- `:text_link` - Text links
+- `:text_mention` - Text mentions
+- `:custom_emoji` - Custom emoji
+
+## Shortcuts
+
+Filter queries support powerful shortcuts:
+
+### Empty L1 - Messages and Channel Posts
+
+`:` matches both `message` and `channel_post`:
+
+```typescript
+// Matches both messages and channel posts with text
+bot.on(':text', ctx => {
+  // ctx.message?.text OR ctx.channelPost?.text
+  const text = ctx.msg?.text
+})
+```
+
+Equivalent to:
+```typescript
+bot.on(['message:text', 'channel_post:text'], ctx => { /* ... */ })
+```
+
+### `msg` - All Message Types
+
+`msg:` matches all message-like updates:
+
+```typescript
+bot.on('msg:text', ctx => {
+  // Matches:
+  // - message:text
+  // - channel_post:text  
+  // - edited_message:text
+  // - edited_channel_post:text
+  // - business_message:text
+  // - edited_business_message:text
+})
+```
+
+### `edit` - Edited Messages
+
+`edit:` matches edited messages and channel posts:
+
+```typescript
+bot.on('edit:text', ctx => {
+  // Matches:
+  // - edited_message:text
+  // - edited_channel_post:text
+})
+```
+
+### Double Colon - Entity Shortcuts
+
+`::` expands to both `:entities:` and `:caption_entities:`:
+
+```typescript
+// Match URL in text OR caption
+bot.on('message::url', ctx => {
+  // Matches:
+  // - message:entities:url
+  // - message:caption_entities:url
+})
+
+// In any message-like update
+bot.on('::url', ctx => {
+  // URLs in text or caption of any message type
+})
+```
+
+### `media` - Photo or Video
+
+```typescript
+bot.on(':media', ctx => {
+  // Matches:
+  // - :photo
+  // - :video
+})
+```
+
+### `file` - Any File Type
+
+```typescript
+bot.on(':file', ctx => {
+  // Matches:
+  // - :photo
+  // - :animation
+  // - :audio
+  // - :document
+  // - :video
+  // - :video_note
+  // - :voice
+  // - :sticker
+})
+```
+
+## Combining Filters
+
+### OR Logic - Array of Filters
+
+Pass an array to match any of the filters:
+
+```typescript
+// Match text messages OR photos
+bot.on(['message:text', 'message:photo'], ctx => {
+  if (ctx.message.text) {
+    console.log('Text:', ctx.message.text)
+  } else if (ctx.message.photo) {
+    console.log('Photo')
+  }
+})
+
+// Using shortcuts
+bot.on([':text', ':photo'], ctx => { /* ... */ })
+```
+
+### AND Logic - Chaining
+
+Chain `.on()` calls for AND logic:
+
+```typescript
+// Messages that are BOTH text AND contain URLs
+bot.on(':text').on('::url', ctx => {
+  // ctx.msg.text exists AND has URL entities
+  const text: string = ctx.msg.text
+})
+
+// Private chat text messages
+bot.chatType('private').on('message:text', ctx => {
+  // Private chat AND text message
+})
+```
+
+## Advanced Examples
+
+### Forwarded Messages
+
+```typescript
+// Any forwarded message
+bot.on(':forward_origin', ctx => {
+  const origin = ctx.msg?.forward_origin
+})
+
+// Forwarded from users
+bot.on(':forward_origin:user', ctx => {
+  // origin.type === 'user'
+})
+
+// Forwarded from channels
+bot.on(':forward_origin:channel', ctx => {
+  // origin.type === 'channel'
+})
+```
+
+### Service Messages
+
+```typescript
+// New chat members
+bot.on('message:new_chat_members', ctx => {
+  const newMembers = ctx.message.new_chat_members
+})
+
+// Chat title changed
+bot.on(':new_chat_title', ctx => {
+  console.log('New title:', ctx.msg.new_chat_title)
+})
+
+// Pinned message
+bot.on(':pinned_message', ctx => {
+  const pinned = ctx.msg.pinned_message
+})
+```
+
+### Bot-Specific Filters
+
+The special `me` filter matches your bot:
+
+```typescript
+// New members that include your bot
+bot.on('message:new_chat_members:me', ctx => {
+  console.log('Bot was added to the chat!')
+})
+
+// Someone left, and it was the bot
+bot.on('message:left_chat_member:me', ctx => {
+  console.log('Bot was removed')
+})
+```
+
+### Business Updates
+
+```typescript
+// Business connection enabled
+bot.on('business_connection:is_enabled', ctx => {
+  console.log('Business connected')
+})
+
+// Business messages
+bot.on('business_message:text', ctx => {
+  const text = ctx.businessMessage.text
+})
+```
+
+### Reactions
+
+```typescript
+// Any emoji reaction
+bot.on('message_reaction:new_reaction:emoji', ctx => {
+  const reactions = ctx.messageReaction.new_reaction
+})
+
+// Paid reactions
+bot.on('message_reaction:new_reaction:paid', ctx => {
+  console.log('Paid reaction received!')
+})
+```
+
+### Stickers
+
+```typescript
+// Animated stickers
+bot.on('message:sticker:is_animated', ctx => {
+  console.log('Animated sticker')
+})
+
+// Video stickers
+bot.on('message:sticker:is_video', ctx => {
+  console.log('Video sticker')
+})
+
+// Premium stickers
+bot.on('message:sticker:premium_animation', ctx => {
+  console.log('Premium sticker')
+})
+```
+
+## Using Filter Functions
+
+Create reusable filter predicates:
+
+```typescript
+import { matchFilter } from 'grammy'
+
+// Create a filter function
+const hasPhoto = matchFilter('message:photo')
+
+// Use it
+bot.filter(hasPhoto, ctx => {
+  // ctx.message.photo is guaranteed
+})
+
+// Or use the predicate directly
+bot.use((ctx) => {
+  if (hasPhoto(ctx)) {
+    // Type is narrowed here too!
+    console.log(ctx.message.photo)
+  }
+})
+```
+
+Drop updates that match:
+
+```typescript
+import { matchFilter } from 'grammy'
+
+// Ignore forwarded messages
+bot.drop(matchFilter(':forward_origin'), ctx => {
+  // Only non-forwarded messages reach here
+})
+```
+
+## Type Safety
+
+Filter queries provide automatic type narrowing:
+
+```typescript
+bot.on('message:text', ctx => {
+  // TypeScript knows these are defined:
+  ctx.message        // Message (not undefined)
+  ctx.message.text   // string (not undefined)
+  ctx.msg            // Message (not undefined)
+  ctx.msg.text       // string (not undefined)
+})
+
+bot.on('message:photo', ctx => {
+  ctx.message.photo  // PhotoSize[] (not undefined)
+})
+
+bot.on('callback_query:data', ctx => {
+  ctx.callbackQuery.data  // string (not undefined)
+})
+```
+
+Multiple filters create union types:
+
+```typescript
+bot.on(['message:text', 'message:photo'], ctx => {
+  // ctx.message.text may or may not exist
+  // ctx.message.photo may or may not exist
+  // Use type guards:
+  if (ctx.message.text) {
+    const text: string = ctx.message.text
+  } else if (ctx.message.photo) {
+    const photos: PhotoSize[] = ctx.message.photo
+  }
+})
+```
+
+## Performance
+
+Filter queries are compiled to efficient predicate functions:
+
+```typescript
+// This filter query:
+bot.on('message:text')
+
+// Compiles to roughly:
+function predicate(ctx) {
+  return ctx.update.message?.text !== undefined
+}
+
+// And is cached for reuse
+```
+
+The compilation happens once, so there's no performance penalty for using filter queries.
+
+## Common Patterns
+
+### Ignore Bot Messages
+
+```typescript
+bot.use((ctx, next) => {
+  if (ctx.from?.is_bot) return // Ignore bots
+  return next()
+})
+```
+
+### Admin-Only Commands
+
+```typescript
+const ADMIN_IDS = [123456789, 987654321]
+
+bot.filter(
+  ctx => ctx.from && ADMIN_IDS.includes(ctx.from.id),
+  (ctx) => {
+    // Admin-only handlers
+  }
+)
+```
+
+### Private Chat Only
+
+```typescript
+bot.chatType('private').command('secret', ctx => {
+  ctx.reply('This only works in private chats')
+})
+```
+
+### Group Features
+
+```typescript
+bot.chatType(['group', 'supergroup'], ctx => {
+  // Group-only features
+})
+```
+
+## Debugging Filter Queries
+
+If a filter query isn't working as expected:
+
+```typescript
+import { parse, preprocess } from 'grammy'
+
+// See how a query expands
+const query = '::url'
+const parsed = parse(query)
+const expanded = parsed.flatMap(preprocess)
+console.log(expanded)
+// Outputs all the expanded filter combinations
+```
+
+## Best Practices
+
+<Tip>
+**Use Specific Filters**
+
+Be as specific as possible:
+```typescript
+// Less specific
+bot.on('message', ctx => {
+  if (ctx.message.text) { /* ... */ }
+})
+
+// More specific (better)
+bot.on('message:text', ctx => {
+  // Automatic type narrowing!
+})
+```
+</Tip>
+
+<Tip>
+**Combine Filters for Precision**
+
+```typescript
+// Private chat text messages with URLs
+bot
+  .chatType('private')
+  .on('message:text')
+  .filter(ctx => ctx.entities('url').length > 0)
+  .use(ctx => {
+    // Very specific handler
+  })
+```
+</Tip>
+
+<Tip>
+**Use Shortcuts for Readability**
+
+```typescript
+// Instead of:
+bot.on([
+  'message:entities:url',
+  'message:caption_entities:url'
+], ctx => { /* ... */ })
+
+// Use:
+bot.on('message::url', ctx => { /* ... */ })
+```
+</Tip>
+
+## Related
+
+- [Context](/concepts/context) - Context object structure
+- [Middleware](/concepts/middleware) - Using middleware
+- [Updates](/concepts/updates) - Understanding updates

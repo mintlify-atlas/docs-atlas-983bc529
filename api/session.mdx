@@ -1,0 +1,508 @@
+---
+title: Session
+description: Session middleware for persistent data storage in grammY
+icon: database
+---
+
+Session middleware provides persistent data storage for your bot, allowing you to remember information across updates. It attaches session data to every chat and makes it available on the context object under `ctx.session`.
+
+## session
+
+Creates session middleware that loads and saves session data automatically.
+
+```typescript
+function session<S, C extends Context>(
+  options?: SessionOptions<S, C> | MultiSessionOptions<S, C>
+): MiddlewareFn<C & SessionFlavor<S>>
+```
+
+<ParamField path="options" type="SessionOptions<S, C> | MultiSessionOptions<S, C>">
+  Configuration options for session middleware
+</ParamField>
+
+**Returns:** Middleware function that adds `ctx.session` to the context.
+
+### Example
+
+```typescript
+import { Bot, session } from 'grammy'
+
+interface SessionData {
+  messageCount: number
+  username?: string
+}
+
+const bot = new Bot<Context & SessionFlavor<SessionData>>('YOUR_BOT_TOKEN')
+
+// Install session middleware
+bot.use(session({
+  initial: () => ({ messageCount: 0 })
+}))
+
+bot.on('message', (ctx) => {
+  ctx.session.messageCount++
+  ctx.reply(`You sent ${ctx.session.messageCount} messages`)
+})
+```
+
+## SessionOptions
+
+Configuration options for single session middleware.
+
+<ParamField path="type" type="'single'">
+  Session type. Defaults to `'single'` if omitted.
+</ParamField>
+
+<ParamField path="initial" type="() => S">
+  **Recommended.** Function that produces an initial value for `ctx.session`. Called when the storage returns `undefined` for a session key. Must return a new value each time to avoid sharing session data between different chats.
+</ParamField>
+
+<ParamField path="prefix" type="string">
+  Optional prefix to prepend to session keys. Useful for namespacing session data.
+</ParamField>
+
+<ParamField path="getSessionKey" type="(ctx: Context) => string | undefined">
+  Custom function to generate session keys. By default, sessions are stored per chat using `ctx.chatId`.
+  
+  Return `undefined` to skip session loading for an update.
+</ParamField>
+
+<ParamField path="storage" type="StorageAdapter<S>">
+  Storage adapter for reading and writing session data. Defaults to in-memory storage (data is lost on restart).
+  
+  See [known storage adapters](https://grammy.dev/plugins/session#known-storage-adapters) for database integrations.
+</ParamField>
+
+### Example with Options
+
+```typescript
+import { Bot, session } from 'grammy'
+
+interface SessionData {
+  count: number
+  started: Date
+}
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.use(session<SessionData>({
+  initial: () => ({
+    count: 0,
+    started: new Date()
+  }),
+  prefix: 'mybot',
+  getSessionKey: (ctx) => {
+    // Separate sessions for each user in each chat
+    return ctx.chat?.id && ctx.from?.id
+      ? `${ctx.chat.id}:${ctx.from.id}`
+      : undefined
+  }
+}))
+```
+
+## MultiSessionOptions
+
+Configuration for managing multiple independent sessions per update.
+
+```typescript
+type MultiSessionOptions<S, C> = {
+  type: 'multi'
+} & {
+  [K in keyof S]: SessionOptions<S[K], C>
+}
+```
+
+<ParamField path="type" type="'multi'" required>
+  Must be set to `'multi'` for multi sessions
+</ParamField>
+
+Each property of the session data object gets its own `SessionOptions` configuration.
+
+### Example
+
+```typescript
+import { Bot, session } from 'grammy'
+
+interface SessionData {
+  chat: { theme: string }
+  user: { language: string }
+}
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.use(session<SessionData>({
+  type: 'multi',
+  chat: {
+    initial: () => ({ theme: 'light' }),
+    // Store per chat
+    getSessionKey: (ctx) => ctx.chat?.id?.toString()
+  },
+  user: {
+    initial: () => ({ language: 'en' }),
+    // Store per user
+    getSessionKey: (ctx) => ctx.from?.id?.toString()
+  }
+}))
+
+bot.command('theme', (ctx) => {
+  ctx.session.chat.theme = 'dark'
+  ctx.reply('Theme updated!')
+})
+
+bot.command('language', (ctx) => {
+  ctx.session.user.language = 'es'
+  ctx.reply('Language updated!')
+})
+```
+
+## SessionFlavor
+
+Context flavor that adds the `session` property.
+
+```typescript
+interface SessionFlavor<S> {
+  get session(): S
+  set session(session: S | null | undefined)
+}
+```
+
+<ResponseField name="session" type="S">
+  Session data for the current update. Reading or writing throws if `getSessionKey` returns `undefined`.
+  
+  Set to `null` or `undefined` to delete the session.
+</ResponseField>
+
+**Warning:** The type system does not include `| undefined` to avoid cumbersome null checks. Ensure session data is always initialized via the `initial` option or by assigning a value if empty.
+
+### Example
+
+```typescript
+import { Context, SessionFlavor } from 'grammy'
+
+interface SessionData {
+  pizzaCount: number
+}
+
+type MyContext = Context & SessionFlavor<SessionData>
+
+const bot = new Bot<MyContext>('YOUR_BOT_TOKEN')
+
+bot.use(session({
+  initial: () => ({ pizzaCount: 0 })
+}))
+
+bot.command('pizza', (ctx) => {
+  ctx.session.pizzaCount++
+  ctx.reply(`🍕 ${ctx.session.pizzaCount}`)
+})
+
+bot.command('reset', (ctx) => {
+  // Delete the session
+  ctx.session = null
+  ctx.reply('Session reset!')
+})
+```
+
+## lazySession
+
+Creates lazy session middleware that loads session data on-demand.
+
+```typescript
+function lazySession<S, C extends Context>(
+  options?: SessionOptions<S, C>
+): MiddlewareFn<C & LazySessionFlavor<S>>
+```
+
+<ParamField path="options" type="SessionOptions<S, C>">
+  Configuration options (same as regular session, but multi sessions are not supported)
+</ParamField>
+
+**Returns:** Middleware function that adds lazy `ctx.session` to the context.
+
+Lazy sessions load data only when you access `ctx.session`, reducing unnecessary database queries for updates your bot ignores.
+
+### Example
+
+```typescript
+import { Bot, lazySession } from 'grammy'
+
+interface SessionData {
+  score: number
+}
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.use(lazySession({
+  initial: () => ({ score: 0 })
+}))
+
+// No database query here - session not accessed
+bot.on('message:sticker', (ctx) => {
+  ctx.reply('Nice sticker!')
+})
+
+// Database query happens only on this line
+bot.command('score', async (ctx) => {
+  const session = await ctx.session // Note the await!
+  session.score++
+  ctx.reply(`Score: ${session.score}`)
+})
+```
+
+## LazySessionFlavor
+
+Context flavor for lazy sessions.
+
+```typescript
+interface LazySessionFlavor<S> {
+  get session(): MaybePromise<S>
+  set session(session: MaybePromise<S | null | undefined>)
+}
+```
+
+<ResponseField name="session" type="MaybePromise<S>">
+  Session data or a Promise of session data. First access triggers the database query; subsequent accesses return the cached value.
+</ResponseField>
+
+## StorageAdapter
+
+Interface for implementing custom storage backends.
+
+```typescript
+interface StorageAdapter<T> {
+  read: (key: string) => MaybePromise<T | undefined>
+  write: (key: string, value: T) => MaybePromise<void>
+  delete: (key: string) => MaybePromise<void>
+  has?: (key: string) => MaybePromise<boolean>
+  readAllKeys?: () => Iterable<string> | AsyncIterable<string>
+  readAllValues?: () => Iterable<T> | AsyncIterable<T>
+  readAllEntries?: () => Iterable<[string, T]> | AsyncIterable<[string, T]>
+}
+```
+
+<ParamField path="read" type="(key: string) => MaybePromise<T | undefined>" required>
+  Reads a value from storage. Returns `undefined` if the key doesn't exist.
+</ParamField>
+
+<ParamField path="write" type="(key: string, value: T) => MaybePromise<void>" required>
+  Writes a value to storage.
+</ParamField>
+
+<ParamField path="delete" type="(key: string) => MaybePromise<void>" required>
+  Deletes a value from storage.
+</ParamField>
+
+<ParamField path="has" type="(key: string) => MaybePromise<boolean>">
+  Optional. Checks if a key exists in storage.
+</ParamField>
+
+<ParamField path="readAllKeys" type="() => Iterable<string> | AsyncIterable<string>">
+  Optional. Lists all keys in storage.
+</ParamField>
+
+<ParamField path="readAllValues" type="() => Iterable<T> | AsyncIterable<T>">
+  Optional. Lists all values in storage.
+</ParamField>
+
+<ParamField path="readAllEntries" type="() => Iterable<[string, T]> | AsyncIterable<[string, T]>">
+  Optional. Lists all key-value pairs in storage.
+</ParamField>
+
+### Example Storage Adapter
+
+```typescript
+import { StorageAdapter } from 'grammy'
+import Redis from 'ioredis'
+
+class RedisAdapter<T> implements StorageAdapter<T> {
+  constructor(private redis: Redis) {}
+  
+  async read(key: string): Promise<T | undefined> {
+    const value = await this.redis.get(key)
+    return value ? JSON.parse(value) : undefined
+  }
+  
+  async write(key: string, value: T): Promise<void> {
+    await this.redis.set(key, JSON.stringify(value))
+  }
+  
+  async delete(key: string): Promise<void> {
+    await this.redis.del(key)
+  }
+}
+
+const redis = new Redis()
+bot.use(session({
+  initial: () => ({ count: 0 }),
+  storage: new RedisAdapter(redis)
+}))
+```
+
+## MemorySessionStorage
+
+Built-in in-memory storage adapter.
+
+```typescript
+class MemorySessionStorage<S> implements StorageAdapter<S> {
+  constructor(timeToLive?: number)
+  
+  read(key: string): S | undefined
+  write(key: string, value: S): void
+  delete(key: string): void
+  has(key: string): boolean
+  readAllKeys(): string[]
+  readAllValues(): S[]
+  readAllEntries(): [string, S][]
+}
+```
+
+<ParamField path="timeToLive" type="number">
+  Optional TTL in milliseconds. Sessions older than this are automatically discarded. Defaults to `Infinity` (never expire).
+</ParamField>
+
+**Note:** This adapter stores data in RAM. All data is lost when your bot process restarts. Use a database adapter for production.
+
+### Example
+
+```typescript
+import { Bot, session, MemorySessionStorage } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Sessions expire after 1 hour
+bot.use(session({
+  initial: () => ({ data: [] }),
+  storage: new MemorySessionStorage(60 * 60 * 1000)
+}))
+```
+
+## enhanceStorage
+
+Enhances a storage adapter with session migrations and expiry dates.
+
+```typescript
+function enhanceStorage<T>(
+  options: MigrationOptions<T>
+): StorageAdapter<T>
+```
+
+<ParamField path="options" type="MigrationOptions<T>" required>
+  Enhancement options
+  
+  <Expandable title="MigrationOptions properties">
+    <ParamField path="storage" type="StorageAdapter<Enhance<T>>" required>
+      The storage adapter to enhance
+    </ParamField>
+    
+    <ParamField path="migrations" type="Migrations">
+      Mapping from version numbers to migration functions
+    </ParamField>
+    
+    <ParamField path="millisecondsToLive" type="number">
+      TTL in milliseconds for session expiry
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example with Migrations
+
+```typescript
+import { enhanceStorage, MemorySessionStorage } from 'grammy'
+
+interface SessionV1 {
+  counter: number
+}
+
+interface SessionV2 {
+  count: number
+  lastUpdate: number
+}
+
+const storage = enhanceStorage({
+  storage: new MemorySessionStorage(),
+  migrations: {
+    1: (old: any) => ({ counter: 0 }), // Initialize v1
+    2: (old: SessionV1): SessionV2 => ({
+      count: old.counter,
+      lastUpdate: Date.now()
+    })
+  },
+  millisecondsToLive: 24 * 60 * 60 * 1000 // 24 hours
+})
+
+bot.use(session({
+  initial: (): SessionV2 => ({ count: 0, lastUpdate: Date.now() }),
+  storage
+}))
+```
+
+## Complete Example
+
+```typescript
+import { Bot, Context, session, SessionFlavor } from 'grammy'
+
+// Define session structure
+interface SessionData {
+  messageCount: number
+  lastCommand?: string
+  preferences: {
+    notifications: boolean
+    theme: 'light' | 'dark'
+  }
+}
+
+// Create custom context type
+type MyContext = Context & SessionFlavor<SessionData>
+
+const bot = new Bot<MyContext>('YOUR_BOT_TOKEN')
+
+// Install session middleware
+bot.use(session({
+  initial: (): SessionData => ({
+    messageCount: 0,
+    preferences: {
+      notifications: true,
+      theme: 'light'
+    }
+  })
+}))
+
+// Use session data
+bot.on('message', (ctx) => {
+  ctx.session.messageCount++
+  
+  if (ctx.session.messageCount === 1) {
+    ctx.reply('Welcome! This is your first message.')
+  }
+})
+
+bot.command('stats', (ctx) => {
+  const { messageCount, lastCommand, preferences } = ctx.session
+  ctx.reply(
+    `📊 Your Stats:\n` +
+    `Messages: ${messageCount}\n` +
+    `Last command: ${lastCommand || 'none'}\n` +
+    `Theme: ${preferences.theme}\n` +
+    `Notifications: ${preferences.notifications ? 'on' : 'off'}`
+  )
+})
+
+bot.command('theme', (ctx) => {
+  const current = ctx.session.preferences.theme
+  ctx.session.preferences.theme = current === 'light' ? 'dark' : 'light'
+  ctx.reply(`Theme changed to ${ctx.session.preferences.theme}`)
+})
+
+bot.command('reset', (ctx) => {
+  ctx.session = null
+  ctx.reply('Session cleared!')
+})
+
+bot.start()
+```
+
+## See Also
+
+- [Sessions Guide](https://grammy.dev/plugins/session) - Complete session documentation
+- [Known Storage Adapters](https://grammy.dev/plugins/session#known-storage-adapters) - Database integrations
+- [Context Flavors](https://grammy.dev/guide/context#context-flavors) - Extending context

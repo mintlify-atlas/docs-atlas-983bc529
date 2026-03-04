@@ -1,0 +1,402 @@
+---
+title: Middleware Types
+description: TypeScript types for middleware functions in grammY
+---
+
+Middleware is the backbone of grammY. These types help you write type-safe middleware functions.
+
+## Middleware\<C\>
+
+The main middleware type. Middleware can be either a function or an object containing middleware.
+
+```typescript
+type Middleware<C extends Context = Context> =
+  | MiddlewareFn<C>
+  | MiddlewareObj<C>
+```
+
+**Usage:**
+
+```typescript
+import { Middleware, Context } from 'grammy'
+
+const myMiddleware: Middleware<Context> = (ctx, next) => {
+  console.log('Before next middleware')
+  await next()
+  console.log('After next middleware')
+}
+
+bot.use(myMiddleware)
+```
+
+## MiddlewareFn\<C\>
+
+A middleware function type.
+
+```typescript
+type MiddlewareFn<C extends Context = Context> = (
+  ctx: C,
+  next: NextFunction
+) => MaybePromise<unknown>
+```
+
+**Parameters:**
+- `ctx`: The context object containing update information
+- `next`: Function to call the next middleware in the chain
+
+**Returns:** Any value (typically `void` or `Promise<void>`)
+
+**Usage:**
+
+```typescript
+import { MiddlewareFn } from 'grammy'
+
+const logger: MiddlewareFn = async (ctx, next) => {
+  console.log(`Update ${ctx.update.update_id}`)
+  await next()  // Pass control to next middleware
+  console.log('Done processing update')
+}
+
+bot.use(logger)
+```
+
+### Middleware Execution Flow
+
+Middleware executes in the order it's registered:
+
+```typescript
+bot.use(async (ctx, next) => {
+  console.log('1: Before')   // Runs first
+  await next()
+  console.log('1: After')    // Runs last
+})
+
+bot.use(async (ctx, next) => {
+  console.log('2: Before')   // Runs second
+  await next()
+  console.log('2: After')    // Runs third
+})
+
+bot.use((ctx) => {
+  console.log('3: Handler')  // Runs in the middle
+  // No next() call - end of chain
+})
+
+// Output:
+// 1: Before
+// 2: Before
+// 3: Handler
+// 2: After
+// 1: After
+```
+
+## NextFunction
+
+The function passed to middleware for calling downstream middleware.
+
+```typescript
+type NextFunction = () => Promise<void>
+```
+
+**Key points:**
+- Always returns a `Promise`
+- Should be `await`ed to ensure proper execution order
+- Calling it passes control to the next middleware
+- Not calling it stops the middleware chain
+
+**Usage:**
+
+```typescript
+// Call next to continue processing
+bot.use(async (ctx, next) => {
+  console.log('Processing...')
+  await next()  // Important: await it!
+})
+
+// Don't call next to stop the chain
+bot.use(async (ctx, next) => {
+  if (ctx.from?.id === BANNED_USER) {
+    // Don't call next() - stop processing
+    return
+  }
+  await next()  // Continue for other users
+})
+
+// Modify context before/after next
+bot.use(async (ctx, next) => {
+  const start = Date.now()
+  await next()  // Wait for downstream middleware
+  const duration = Date.now() - start
+  console.log(`Request took ${duration}ms`)
+})
+```
+
+### Common Mistake: Forgetting to await
+
+```typescript
+// ❌ Wrong - doesn't wait for next middleware
+bot.use((ctx, next) => {
+  console.log('Before')
+  next()  // Missing await!
+  console.log('After')  // Runs immediately, not after downstream
+})
+
+// ✅ Correct
+bot.use(async (ctx, next) => {
+  console.log('Before')
+  await next()  // Wait for downstream middleware
+  console.log('After')  // Now runs after downstream
+})
+```
+
+## MiddlewareObj\<C\>
+
+An object that contains middleware.
+
+```typescript
+interface MiddlewareObj<C extends Context = Context> {
+  middleware(): MiddlewareFn<C>
+}
+```
+
+This is how `Composer` and `Bot` instances work - they implement `MiddlewareObj`.
+
+**Usage:**
+
+```typescript
+import { Composer, MiddlewareObj } from 'grammy'
+
+const myComposer = new Composer<Context>()
+myComposer.on('message', (ctx) => ctx.reply('Hello!'))
+
+// Composer implements MiddlewareObj
+const obj: MiddlewareObj<Context> = myComposer
+
+// Install the composer's middleware
+bot.use(obj)
+// Or equivalently:
+bot.use(myComposer.middleware())
+```
+
+## Specialized Middleware Types
+
+grammY provides type aliases for common middleware patterns:
+
+### HearsMiddleware\<C\>
+
+Middleware used with `bot.hears()`:
+
+```typescript
+import { HearsMiddleware, HearsContext } from 'grammy'
+
+const hearsHandler: HearsMiddleware<Context> = (ctx) => {
+  // ctx.match contains RegExp match results
+  const match: RegExpMatchArray = ctx.match
+  ctx.reply(`You said: ${match[0]}`)
+}
+
+bot.hears(/hello (\w+)/, hearsHandler)
+```
+
+### CommandMiddleware\<C\>
+
+Middleware used with `bot.command()`:
+
+```typescript
+import { CommandMiddleware, CommandContext } from 'grammy'
+
+const startCommand: CommandMiddleware<Context> = (ctx) => {
+  // ctx.match contains the command payload
+  const payload: string = ctx.match
+  ctx.reply(`Welcome! Payload: ${payload}`)
+}
+
+bot.command('start', startCommand)
+```
+
+### CallbackQueryMiddleware\<C\>
+
+Middleware used with `bot.callbackQuery()`:
+
+```typescript
+import { CallbackQueryMiddleware, CallbackQueryContext } from 'grammy'
+
+const buttonHandler: CallbackQueryMiddleware<Context> = async (ctx) => {
+  await ctx.answerCallbackQuery('Button clicked!')
+  await ctx.editMessageText('You clicked the button')
+}
+
+bot.callbackQuery('button_data', buttonHandler)
+```
+
+### InlineQueryMiddleware\<C\>
+
+Middleware used with `bot.inlineQuery()`:
+
+```typescript
+import { InlineQueryMiddleware } from 'grammy'
+
+const inlineHandler: InlineQueryMiddleware<Context> = async (ctx) => {
+  await ctx.answerInlineQuery([/* results */])
+}
+
+bot.inlineQuery('search', inlineHandler)
+```
+
+### ChatTypeMiddleware\<C, T\>
+
+Middleware used with `bot.chatType()`:
+
+```typescript
+import { ChatTypeMiddleware, ChatTypeContext } from 'grammy'
+
+const privateHandler: ChatTypeMiddleware<Context, 'private'> = (ctx) => {
+  // ctx.chat.type is guaranteed to be 'private'
+  ctx.reply('This is a private chat')
+}
+
+bot.chatType('private', privateHandler)
+```
+
+### ReactionMiddleware\<C\>
+
+Middleware used with `bot.reaction()`:
+
+```typescript
+import { ReactionMiddleware, ReactionContext } from 'grammy'
+
+const thumbsUpHandler: ReactionMiddleware<Context> = (ctx) => {
+  console.log('Someone reacted with 👍')
+}
+
+bot.reaction('👍', thumbsUpHandler)
+```
+
+## Custom Context Types
+
+All middleware types are generic over the context type:
+
+```typescript
+import { Context, MiddlewareFn } from 'grammy'
+
+// Define custom context
+interface MyContext extends Context {
+  session: {
+    count: number
+  }
+}
+
+// Use with custom context
+const counter: MiddlewareFn<MyContext> = (ctx, next) => {
+  ctx.session.count++  // Type-safe!
+  return next()
+}
+
+const bot = new Bot<MyContext>(token)
+bot.use(counter)
+```
+
+## Composing Middleware
+
+Create reusable middleware compositions:
+
+```typescript
+import { Composer, Middleware } from 'grammy'
+
+function createAuthMiddleware(): Middleware<Context> {
+  const composer = new Composer<Context>()
+  
+  composer.use((ctx, next) => {
+    if (!ctx.from) return  // Ignore non-user updates
+    return next()
+  })
+  
+  composer.use((ctx, next) => {
+    if (isAdmin(ctx.from.id)) {
+      return next()
+    }
+  })
+  
+  return composer
+}
+
+bot.use(createAuthMiddleware())
+```
+
+## Error Handling
+
+Middleware can throw errors. Use error boundaries:
+
+```typescript
+import { BotError } from 'grammy'
+
+bot.use(async (ctx, next) => {
+  try {
+    await next()
+  } catch (err) {
+    console.error('Middleware error:', err)
+    await ctx.reply('An error occurred')
+  }
+})
+
+// Or use bot.catch for global error handling
+bot.catch((err: BotError) => {
+  console.error('Error for update', err.ctx.update.update_id)
+  console.error('Error:', err.error)
+})
+```
+
+## Advanced: run() Function
+
+Manually execute middleware:
+
+```typescript
+import { run, MiddlewareFn, Context } from 'grammy'
+
+const middleware: MiddlewareFn<Context> = (ctx, next) => {
+  console.log('Running middleware')
+}
+
+const ctx: Context = /* ... */
+await run(middleware, ctx)
+```
+
+## Best Practices
+
+1. **Always await next()**
+   ```typescript
+   // ✅ Good
+   await next()
+   
+   // ❌ Bad
+   next()
+   ```
+
+2. **Type your middleware**
+   ```typescript
+   // ✅ Good
+   const mw: MiddlewareFn<MyContext> = (ctx, next) => { ... }
+   
+   // ❌ Less safe
+   const mw = (ctx, next) => { ... }
+   ```
+
+3. **Use specialized types**
+   ```typescript
+   // ✅ Good - use specific type
+   const handler: CommandMiddleware<Context> = (ctx) => { ... }
+   
+   // ❌ Less specific
+   const handler: Middleware<Context> = (ctx) => { ... }
+   ```
+
+4. **Don't call next() multiple times**
+   ```typescript
+   // ❌ Bad
+   bot.use(async (ctx, next) => {
+     await next()
+     await next()  // Error: next already called!
+   })
+   ```
+
+Middleware types provide the foundation for building modular, type-safe bots with grammY!

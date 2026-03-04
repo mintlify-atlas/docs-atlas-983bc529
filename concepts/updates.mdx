@@ -1,0 +1,572 @@
+---
+title: 'Updates'
+description: 'Understanding Telegram updates and how grammY processes them'
+---
+
+Updates are the fundamental data packets that Telegram sends to your bot when something happens. Every message, callback query, inline query, and other event generates an update.
+
+## What is an Update?
+
+An update is a JSON object from Telegram that contains information about an event. Each update has:
+
+- A unique `update_id` that increments sequentially
+- Exactly one of many possible update types (message, callback_query, etc.)
+
+```typescript
+interface Update {
+  update_id: number
+  message?: Message
+  edited_message?: Message
+  channel_post?: Message
+  edited_channel_post?: Message
+  business_connection?: BusinessConnection
+  business_message?: Message
+  edited_business_message?: Message
+  deleted_business_messages?: DeletedBusinessMessages
+  message_reaction?: MessageReactionUpdated
+  message_reaction_count?: MessageReactionCountUpdated
+  inline_query?: InlineQuery
+  chosen_inline_result?: ChosenInlineResult
+  callback_query?: CallbackQuery
+  shipping_query?: ShippingQuery
+  pre_checkout_query?: PreCheckoutQuery
+  purchased_paid_media?: PaidMediaPurchased
+  poll?: Poll
+  poll_answer?: PollAnswer
+  my_chat_member?: ChatMemberUpdated
+  chat_member?: ChatMemberUpdated
+  chat_join_request?: ChatJoinRequest
+  chat_boost?: ChatBoostUpdated
+  removed_chat_boost?: ChatBoostRemoved
+}
+```
+
+## Update Types
+
+### Message Updates
+
+The most common updates are messages:
+
+```typescript
+bot.on('message', (ctx) => {
+  console.log('New message:', ctx.message)
+})
+
+bot.on('edited_message', (ctx) => {
+  console.log('Message edited:', ctx.editedMessage)
+})
+```
+
+**Update types:**
+- `message` - New message in a chat
+- `edited_message` - A message was edited
+- `channel_post` - New channel post
+- `edited_channel_post` - Channel post edited
+
+### Business Updates
+
+For [Telegram Business](https://core.telegram.org/bots/api#telegram-business) accounts:
+
+```typescript
+bot.on('business_message', (ctx) => {
+  // Handle business account messages
+})
+
+bot.on('business_connection', (ctx) => {
+  if (ctx.businessConnection.is_enabled) {
+    console.log('Business account connected')
+  }
+})
+```
+
+**Update types:**
+- `business_connection` - Business account connected/disconnected
+- `business_message` - New message in business chat
+- `edited_business_message` - Business message edited
+- `deleted_business_messages` - Messages deleted from business chat
+
+### Callback Queries
+
+When users click inline buttons:
+
+```typescript
+bot.on('callback_query', async (ctx) => {
+  await ctx.answerCallbackQuery()
+  console.log('Button data:', ctx.callbackQuery.data)
+})
+```
+
+<Warning>
+Always call `ctx.answerCallbackQuery()` within 30 seconds or users see a loading indicator indefinitely.
+</Warning>
+
+### Inline Queries
+
+When users type `@your_bot query` in any chat:
+
+```typescript
+bot.on('inline_query', async (ctx) => {
+  const query = ctx.inlineQuery.query
+  
+  await ctx.answerInlineQuery([
+    {
+      type: 'article',
+      id: '1',
+      title: 'Result',
+      input_message_content: {
+        message_text: `You searched: ${query}`
+      }
+    }
+  ])
+})
+```
+
+### Reactions
+
+When users react to messages:
+
+```typescript
+bot.on('message_reaction', (ctx) => {
+  const { old_reaction, new_reaction } = ctx.messageReaction
+  
+  console.log('Old:', old_reaction)
+  console.log('New:', new_reaction)
+  
+  // Use the helper
+  const r = ctx.reactions()
+  console.log('Added:', r.emojiAdded)
+})
+
+bot.on('message_reaction_count', (ctx) => {
+  // Anonymous reaction count in channels
+  console.log('Reaction count:', ctx.messageReactionCount.reactions)
+})
+```
+
+<Note>
+You must enable `message_reaction` in `allowed_updates` to receive reaction updates:
+
+```typescript
+await bot.start({
+  allowed_updates: ['message', 'message_reaction']
+})
+```
+</Note>
+
+### Chat Member Updates
+
+```typescript
+bot.on('my_chat_member', (ctx) => {
+  // Bot's status in chat changed
+  const { old_chat_member, new_chat_member } = ctx.myChatMember
+  
+  if (new_chat_member.status === 'kicked') {
+    console.log('Bot was removed from chat')
+  }
+})
+
+bot.on('chat_member', (ctx) => {
+  // A chat member's status changed
+  console.log('Member update:', ctx.chatMember)
+})
+```
+
+### Other Update Types
+
+```typescript
+// Join requests
+bot.on('chat_join_request', (ctx) => {
+  const request = ctx.chatJoinRequest
+  // Approve with: ctx.approveChatJoinRequest(request.from.id)
+})
+
+// Boosts
+bot.on('chat_boost', (ctx) => {
+  console.log('Chat boosted!', ctx.chatBoost)
+})
+
+bot.on('removed_chat_boost', (ctx) => {
+  console.log('Boost removed', ctx.removedChatBoost)
+})
+
+// Polls
+bot.on('poll', (ctx) => {
+  console.log('Poll update:', ctx.poll)
+})
+
+bot.on('poll_answer', (ctx) => {
+  console.log('User voted:', ctx.pollAnswer)
+})
+
+// Payments
+bot.on('pre_checkout_query', async (ctx) => {
+  await ctx.answerPreCheckoutQuery(true)
+})
+
+bot.on('shipping_query', async (ctx) => {
+  await ctx.answerShippingQuery(true, shippingOptions)
+})
+
+bot.on('purchased_paid_media', (ctx) => {
+  console.log('Paid media purchased:', ctx.purchasedPaidMedia)
+})
+```
+
+## Receiving Updates
+
+There are two ways to receive updates:
+
+### Long Polling (Default)
+
+The bot repeatedly calls `getUpdates` to fetch new updates:
+
+```typescript
+await bot.start({
+  timeout: 30,        // Long polling timeout
+  limit: 100,         // Max updates per request
+  allowed_updates: [] // All update types
+})
+```
+
+**Advantages:**
+- Easy to set up
+- Works anywhere (no public URL needed)
+- Good for development
+
+**Disadvantages:**
+- Slightly higher latency
+- Keeps a persistent connection
+- Limited scalability for high-load bots
+
+### Webhooks
+
+Telegram sends updates to your server via HTTP POST:
+
+```typescript
+import express from 'express'
+
+const app = express()
+app.use(express.json())
+
+// Set the webhook
+await bot.api.setWebhook('https://your-domain.com/webhook')
+
+// Handle webhook requests
+app.post('/webhook', async (req, res) => {
+  await bot.handleUpdate(req.body)
+  res.sendStatus(200)
+})
+
+app.listen(3000)
+```
+
+**Advantages:**
+- Lower latency
+- Better for high-load bots
+- Serverless-friendly
+
+**Disadvantages:**
+- Requires public HTTPS URL
+- More complex setup
+
+See the [Webhooks guide](/advanced/webhooks) for details.
+
+## Allowed Updates
+
+By default, grammY requests most update types but excludes:
+- `chat_member`
+- `message_reaction`  
+- `message_reaction_count`
+
+Specify which updates to receive:
+
+```typescript
+await bot.start({
+  allowed_updates: [
+    'message',
+    'edited_message',
+    'callback_query',
+    'message_reaction'
+  ]
+})
+```
+
+<Warning>
+If you register handlers for update types not in `allowed_updates`, grammY will warn you:
+
+```typescript
+bot.on('message_reaction', ...) // Handler registered
+
+await bot.start({
+  allowed_updates: ['message'] // Missing 'message_reaction'!
+})
+// Warning: message_reaction not in allowed_updates
+```
+</Warning>
+
+### All Available Update Types
+
+```typescript
+type UpdateType =
+  | 'message'
+  | 'edited_message'
+  | 'channel_post'
+  | 'edited_channel_post'
+  | 'business_connection'
+  | 'business_message'
+  | 'edited_business_message'
+  | 'deleted_business_messages'
+  | 'inline_query'
+  | 'chosen_inline_result'
+  | 'callback_query'
+  | 'shipping_query'
+  | 'pre_checkout_query'
+  | 'purchased_paid_media'
+  | 'poll'
+  | 'poll_answer'
+  | 'my_chat_member'
+  | 'chat_member'
+  | 'chat_join_request'
+  | 'message_reaction'
+  | 'message_reaction_count'
+  | 'chat_boost'
+  | 'removed_chat_boost'
+```
+
+## Update Processing
+
+### Sequential Processing
+
+By default, grammY processes updates **sequentially**:
+
+```typescript
+bot.on('message', async (ctx) => {
+  await someAsyncOperation() // Update 2 waits for this
+})
+// Update 1 arrives -> processed
+// Update 2 arrives -> waits for Update 1
+// Update 3 arrives -> waits for Update 2
+```
+
+This ensures:
+- Messages from the same user are processed in order
+- No race conditions with shared state
+- Predictable behavior
+
+### Concurrent Processing
+
+For high-load bots, use [@grammyjs/runner](https://grammy.dev/plugins/runner):
+
+```typescript
+import { run } from '@grammyjs/runner'
+
+// Process updates concurrently
+run(bot)
+```
+
+The runner:
+- Processes multiple updates simultaneously
+- Maintains order for updates from the same chat
+- Handles backpressure automatically
+- Provides graceful shutdown
+
+## Update Confirmation
+
+Telegram needs confirmation that you received updates. This is handled automatically:
+
+### Long Polling
+
+```typescript
+// grammY automatically confirms by requesting updates with
+// offset = last_update_id + 1
+```
+
+### Webhooks
+
+```typescript
+// Confirm by responding with HTTP 200
+app.post('/webhook', async (req, res) => {
+  await bot.handleUpdate(req.body)
+  res.sendStatus(200) // Confirms receipt
+})
+```
+
+<Warning>
+If you don't confirm updates:
+- Long polling: `getUpdates` will return the same updates repeatedly
+- Webhooks: Telegram will retry sending the update
+</Warning>
+
+## Dropping Pending Updates
+
+When starting your bot, you can drop all pending updates:
+
+```typescript
+await bot.start({
+  drop_pending_updates: true
+})
+```
+
+This is useful:
+- During development when you don't want old test messages
+- After bot downtime when old updates are no longer relevant
+- When changing the bot's behavior significantly
+
+## Update ID Management
+
+Each update has a sequential `update_id`:
+
+```typescript
+bot.use((ctx) => {
+  console.log('Update ID:', ctx.update.update_id)
+})
+```
+
+grammY tracks the last processed update ID internally:
+- Ensures no updates are skipped
+- Resumes from the correct position after restart
+- Handles errors gracefully
+
+## Handling Updates Manually
+
+Process updates without long polling:
+
+```typescript
+import { Update } from 'grammy'
+
+const update: Update = {
+  update_id: 123456,
+  message: {
+    message_id: 1,
+    chat: { id: 789, type: 'private' },
+    from: { id: 789, is_bot: false, first_name: 'User' },
+    date: Date.now() / 1000,
+    text: 'Hello'
+  }
+}
+
+await bot.handleUpdate(update)
+```
+
+This is useful for:
+- Testing
+- Custom update sources
+- Webhook implementations
+
+## Best Practices
+
+<Tip>
+**Specify Allowed Updates**
+
+Only request the update types you need:
+```typescript
+await bot.start({
+  allowed_updates: [
+    'message',
+    'callback_query',
+    'inline_query'
+  ]
+})
+```
+
+This reduces bandwidth and improves performance.
+</Tip>
+
+<Tip>
+**Handle Errors Gracefully**
+
+```typescript
+bot.catch((err) => {
+  console.error('Error processing update:', err)
+  // Update is still confirmed to Telegram
+  // Bot continues running
+})
+```
+</Tip>
+
+<Tip>
+**Use Webhooks for Production**
+
+For production bots with significant traffic, webhooks are more efficient than long polling.
+</Tip>
+
+<Warning>
+**Don't Block the Update Loop**
+
+Long-running operations should be handled asynchronously:
+
+```typescript
+// BAD - Blocks other updates
+bot.on('message', (ctx) => {
+  const result = expensiveSync() // Blocks!
+})
+
+// GOOD - Non-blocking
+bot.on('message', async (ctx) => {
+  const result = await expensiveAsync()
+})
+
+// BETTER - Offload to background
+bot.on('message', (ctx) => {
+  backgroundQueue.add(() => expensiveOperation())
+  ctx.reply('Processing...')
+})
+```
+</Warning>
+
+## Update Flow
+
+```
+Telegram Servers
+      |
+      | (HTTP)
+      |
+      v
+[Long Polling]  or  [Webhook]
+      |
+      v
+  bot.handleUpdate(update)
+      |
+      v
+  new Context(update, api, me)
+      |
+      v
+  Middleware Chain
+      |
+      v
+  Your Handlers
+```
+
+## Debugging Updates
+
+Log all incoming updates:
+
+```typescript
+bot.use((ctx, next) => {
+  console.log('Received update:', JSON.stringify(ctx.update, null, 2))
+  return next()
+})
+```
+
+Or use the debug logger:
+
+```typescript
+// Set environment variable
+export DEBUG="grammy:*"
+
+// Or in code
+import { setLogger } from 'grammy'
+
+setLogger({
+  log: (...args) => console.log(...args),
+  error: (...args) => console.error(...args)
+})
+```
+
+## Related
+
+- [Context](/concepts/context) - How updates are wrapped in context
+- [Middleware](/concepts/middleware) - Processing updates
+- [Filter Queries](/concepts/filter-queries) - Filtering update types
+- [Webhooks](/advanced/webhooks) - Setting up webhooks
+- [Long Polling](/advanced/long-polling) - Long polling details

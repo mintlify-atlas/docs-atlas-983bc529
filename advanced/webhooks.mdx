@@ -1,0 +1,352 @@
+---
+title: Webhooks
+description: Deploy your bot using webhooks for production environments
+icon: webhook
+---
+
+# Webhooks
+
+Webhooks are the preferred way to receive updates in production. Instead of polling Telegram's servers, Telegram sends updates directly to your server via HTTP POST requests.
+
+## Why Webhooks?
+
+<CardGroup cols={2}>
+  <Card title="Lower Latency" icon="gauge-high">
+    Updates arrive instantly without polling delays
+  </Card>
+  <Card title="Lower Load" icon="server">
+    No constant connections to Telegram's servers
+  </Card>
+  <Card title="Scalable" icon="arrows-up-to-line">
+    Works well with serverless platforms and load balancers
+  </Card>
+  <Card title="Cost-Effective" icon="dollar-sign">
+    Reduced bandwidth and compute costs
+  </Card>
+</CardGroup>
+
+## Basic Setup
+
+```typescript
+import { Bot, webhookCallback } from "grammy";
+import express from "express";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message:text", (ctx) => ctx.reply("Got your message!"));
+
+// Create Express app
+const app = express();
+
+// Use the webhook callback
+app.use(express.json());
+app.use(`/webhook/${bot.token}`, webhookCallback(bot, "express"));
+
+// Set webhook
+await bot.api.setWebhook(`https://your-domain.com/webhook/${bot.token}`);
+
+app.listen(3000);
+```
+
+<Warning>
+Never expose your bot token in the URL! Use it as a secret path component to prevent unauthorized webhook calls.
+</Warning>
+
+## Framework Integration
+
+grammY supports many web frameworks:
+
+<Tabs>
+  <Tab title="Express">
+    ```typescript
+    import express from "express";
+    import { webhookCallback } from "grammy";
+
+    const app = express();
+    app.use(express.json());
+    app.use(webhookCallback(bot, "express"));
+
+    await bot.api.setWebhook("https://example.com/webhook");
+    app.listen(8080);
+    ```
+  </Tab>
+  
+  <Tab title="Fastify">
+    ```typescript
+    import fastify from "fastify";
+    import { webhookCallback } from "grammy";
+
+    const server = fastify();
+    server.post("/webhook", webhookCallback(bot, "fastify"));
+
+    await bot.api.setWebhook("https://example.com/webhook");
+    await server.listen({ port: 8080 });
+    ```
+  </Tab>
+  
+  <Tab title="Koa">
+    ```typescript
+    import Koa from "koa";
+    import { koaBody } from "koa-body";
+    import { webhookCallback } from "grammy";
+
+    const app = new Koa();
+    app.use(koaBody());
+    app.use(webhookCallback(bot, "koa"));
+
+    await bot.api.setWebhook("https://example.com/webhook");
+    app.listen(8080);
+    ```
+  </Tab>
+  
+  <Tab title="Node HTTP">
+    ```typescript
+    import { createServer } from "http";
+    import { webhookCallback } from "grammy";
+
+    const handleWebhook = webhookCallback(bot, "std/http");
+
+    createServer(async (req, res) => {
+      if (req.url === "/webhook" && req.method === "POST") {
+        await handleWebhook(req, res);
+      } else {
+        res.statusCode = 404;
+        res.end();
+      }
+    }).listen(8080);
+
+    await bot.api.setWebhook("https://example.com/webhook");
+    ```
+  </Tab>
+</Tabs>
+
+## Serverless Platforms
+
+### Cloudflare Workers
+
+```typescript
+import { Bot, webhookCallback } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message", (ctx) => ctx.reply("Hello from Cloudflare!"));
+
+export default {
+  async fetch(request: Request) {
+    if (request.method === "POST") {
+      const cb = webhookCallback(bot, "cloudflare");
+      return await cb(request);
+    }
+    return new Response("OK");
+  },
+};
+```
+
+### Deno Deploy
+
+```typescript
+import { Bot, webhookCallback } from "https://deno.land/x/grammy/mod.ts";
+
+const bot = new Bot(Deno.env.get("BOT_TOKEN") || "");
+
+bot.on("message", (ctx) => ctx.reply("Hello from Deno!"));
+
+const handleUpdate = webhookCallback(bot, "std/http");
+
+Deno.serve(async (req) => {
+  if (req.method === "POST") {
+    const url = new URL(req.url);
+    if (url.pathname === "/webhook") {
+      return await handleUpdate(req);
+    }
+  }
+  return new Response("Not Found", { status: 404 });
+});
+```
+
+### Vercel
+
+```typescript
+import { Bot, webhookCallback } from "grammy";
+
+const bot = new Bot(process.env.BOT_TOKEN!);
+
+bot.on("message", (ctx) => ctx.reply("Hello from Vercel!"));
+
+export default webhookCallback(bot, "std/http");
+```
+
+## Webhook Configuration
+
+```typescript
+await bot.api.setWebhook("https://example.com/webhook", {
+  // Only receive specific update types
+  allowed_updates: ["message", "callback_query"],
+  
+  // Drop pending updates from previous bot instance
+  drop_pending_updates: true,
+  
+  // Secret token to verify requests
+  secret_token: "your-secret-token",
+  
+  // Maximum allowed number of connections (1-100)
+  max_connections: 40,
+  
+  // Use specific IP address
+  ip_address: "1.2.3.4",
+});
+```
+
+## Security
+
+### Secret Token Verification
+
+```typescript
+import { webhookCallback } from "grammy";
+
+const secretToken = "your-secret-token";
+
+app.post("/webhook", async (req, res) => {
+  // Verify secret token
+  if (req.header("X-Telegram-Bot-Api-Secret-Token") !== secretToken) {
+    return res.status(401).send("Unauthorized");
+  }
+
+  const cb = webhookCallback(bot, "express");
+  await cb(req, res);
+});
+
+// Set webhook with secret token
+await bot.api.setWebhook("https://example.com/webhook", {
+  secret_token: secretToken,
+});
+```
+
+### HTTPS Requirement
+
+<Note>
+Telegram only sends webhooks to HTTPS URLs. For local development, use tunneling tools like ngrok, Cloudflare Tunnel, or Serveo.
+</Note>
+
+## Local Development with Tunneling
+
+### Using ngrok
+
+```bash
+# Install ngrok
+npm install -g ngrok
+
+# Start your bot
+node bot.js
+
+# In another terminal, create a tunnel
+ngrok http 3000
+
+# Use the https URL provided by ngrok
+```
+
+Then set the webhook:
+
+```typescript
+const ngrokUrl = "https://abc123.ngrok.io";
+await bot.api.setWebhook(`${ngrokUrl}/webhook/${bot.token}`);
+```
+
+## Health Checks
+
+```typescript
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: Date.now(),
+  });
+});
+
+app.post("/webhook", webhookCallback(bot, "express"));
+```
+
+## Managing Webhooks
+
+```typescript
+// Get current webhook info
+const info = await bot.api.getWebhookInfo();
+console.log(info);
+
+// Delete webhook (switch back to long polling)
+await bot.api.deleteWebhook({ drop_pending_updates: true });
+
+// Check if webhook is set
+const webhookInfo = await bot.api.getWebhookInfo();
+if (webhookInfo.url) {
+  console.log("Webhook is set to:", webhookInfo.url);
+} else {
+  console.log("No webhook set");
+}
+```
+
+## Error Handling
+
+```typescript
+import { webhookCallback } from "grammy";
+
+bot.catch((err) => {
+  console.error("Error in bot:", err);
+});
+
+app.post("/webhook", async (req, res) => {
+  try {
+    const cb = webhookCallback(bot, "express");
+    await cb(req, res);
+  } catch (error) {
+    console.error("Webhook error:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Secret Tokens" icon="lock">
+    Always verify webhook requests with secret tokens
+  </Card>
+  <Card title="Handle Gracefully" icon="shield-check">
+    Return 200 OK even if your handler fails to prevent retries
+  </Card>
+  <Card title="Keep URLs Secret" icon="eye-slash">
+    Use your bot token as part of the webhook path
+  </Card>
+  <Card title="Monitor Webhook Info" icon="chart-line">
+    Regularly check `getWebhookInfo()` for errors
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<Accordion title="Webhook not receiving updates">
+  - Verify your URL is accessible from the internet
+  - Check that you're using HTTPS with a valid certificate
+  - Ensure your server responds quickly (under 60 seconds)
+  - Check `getWebhookInfo()` for error messages
+</Accordion>
+
+<Accordion title="SSL certificate errors">
+  - Use a valid SSL certificate from a trusted CA
+  - Self-signed certificates must be uploaded via `setWebhook`
+  - Check certificate expiration
+</Accordion>
+
+<Accordion title="Updates delayed or dropped">
+  - Check your `max_connections` setting
+  - Ensure your server responds within 60 seconds
+  - Monitor webhook info for pending update count
+  - Consider scaling your infrastructure
+</Accordion>
+
+## See Also
+
+- [Webhook API Reference](/api/webhook)
+- [Long Polling](/advanced/long-polling)
+- [Deployment](/advanced/deployment)
+- [Bot API Webhook Guide](https://core.telegram.org/bots/webhooks)

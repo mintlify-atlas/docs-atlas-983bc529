@@ -1,0 +1,600 @@
+---
+title: 'Context'
+description: 'Context objects wrap updates and provide shortcuts for bot operations'
+---
+
+When your bot receives an update from Telegram, grammY wraps it in a **context object**. Context objects are passed to all middleware and provide convenient shortcuts for working with the Telegram Bot API.
+
+## What is a Context?
+
+A context object does two main things:
+
+1. **Holds the update** - Access the raw update via `ctx.update`
+2. **Provides API shortcuts** - Call Bot API methods with pre-filled parameters
+
+```typescript
+import { Context } from 'grammy'
+
+bot.on('message', (ctx: Context) => {
+  // Access the update
+  console.log(ctx.update)
+  
+  // Access the message
+  console.log(ctx.message)
+  
+  // Reply to the message
+  await ctx.reply('Got your message!')
+})
+```
+
+## Context Properties
+
+Every context object has these core properties:
+
+<ParamField path="update" type="Update">
+  The complete update object from Telegram
+</ParamField>
+
+<ParamField path="api" type="Api">
+  The Bot API instance for making API calls
+</ParamField>
+
+<ParamField path="me" type="UserFromGetMe">
+  Information about your bot
+</ParamField>
+
+<ParamField path="match" type="string | RegExpMatchArray | undefined">
+  Populated by methods like `hears()`, `command()`, and `callbackQuery()` with matched content
+</ParamField>
+
+## Update Shortcuts
+
+Instead of accessing `ctx.update.message`, use convenient shortcuts:
+
+### Direct Update Properties
+
+```typescript
+bot.on('message', (ctx) => {
+  // All of these are shortcuts to ctx.update.*
+  ctx.message              // ctx.update.message
+  ctx.editedMessage        // ctx.update.edited_message
+  ctx.channelPost          // ctx.update.channel_post
+  ctx.editedChannelPost    // ctx.update.edited_channel_post
+  ctx.inlineQuery          // ctx.update.inline_query
+  ctx.callbackQuery        // ctx.update.callback_query
+  ctx.shippingQuery        // ctx.update.shipping_query
+  ctx.preCheckoutQuery     // ctx.update.pre_checkout_query
+  ctx.myChatMember         // ctx.update.my_chat_member
+  ctx.chatMember           // ctx.update.chat_member
+  ctx.chatJoinRequest      // ctx.update.chat_join_request
+  ctx.messageReaction      // ctx.update.message_reaction
+  ctx.messageReactionCount // ctx.update.message_reaction_count
+  ctx.chatBoost            // ctx.update.chat_boost
+  ctx.removedChatBoost     // ctx.update.removed_chat_boost
+  
+  // Business updates
+  ctx.businessConnection       // ctx.update.business_connection
+  ctx.businessMessage          // ctx.update.business_message
+  ctx.editedBusinessMessage    // ctx.update.edited_business_message
+  ctx.deletedBusinessMessages  // ctx.update.deleted_business_messages
+  
+  // Other updates
+  ctx.poll                     // ctx.update.poll
+  ctx.pollAnswer               // ctx.update.poll_answer
+  ctx.chosenInlineResult       // ctx.update.chosen_inline_result
+  ctx.purchasedPaidMedia       // ctx.update.purchased_paid_media
+})
+```
+
+### Aggregation Shortcuts
+
+These shortcuts intelligently aggregate data from multiple possible sources:
+
+#### `ctx.msg`
+
+Get the message from wherever it appears in the update:
+
+```typescript
+bot.on('message', (ctx) => {
+  // ctx.msg works for all of these:
+  // - ctx.message
+  // - ctx.editedMessage
+  // - ctx.channelPost
+  // - ctx.editedChannelPost
+  // - ctx.businessMessage
+  // - ctx.editedBusinessMessage
+  // - ctx.callbackQuery.message
+  
+  const msg = ctx.msg
+  console.log(msg?.text)
+})
+```
+
+#### `ctx.chat`
+
+Get the chat from wherever possible:
+
+```typescript
+bot.on('message', (ctx) => {
+  // Available from:
+  // - ctx.msg?.chat
+  // - ctx.myChatMember?.chat
+  // - ctx.chatMember?.chat
+  // - ctx.chatJoinRequest?.chat
+  // - ctx.messageReaction?.chat
+  // - ctx.chatBoost?.chat
+  // - etc.
+  
+  const chat = ctx.chat
+  console.log(`Chat ID: ${chat?.id}`)
+  console.log(`Chat type: ${chat?.type}`)
+})
+```
+
+#### `ctx.from`
+
+Get the user who triggered the update:
+
+```typescript
+bot.on('message', (ctx) => {
+  // Available from:
+  // - ctx.msg?.from
+  // - ctx.callbackQuery?.from
+  // - ctx.inlineQuery?.from
+  // - ctx.chosenInlineResult?.from
+  // - ctx.myChatMember?.from
+  // - ctx.chatMember?.from
+  // - ctx.messageReaction?.user
+  // - etc.
+  
+  const user = ctx.from
+  console.log(`User: ${user?.first_name} (@${user?.username})`)
+})
+```
+
+#### Other Aggregations
+
+<ParamField path="ctx.senderChat" type="Chat | undefined">
+  The sender chat from `ctx.msg?.sender_chat`
+</ParamField>
+
+<ParamField path="ctx.msgId" type="number | undefined">
+  Message ID from `ctx.msg`, `ctx.messageReaction`, or `ctx.messageReactionCount`
+</ParamField>
+
+<ParamField path="ctx.chatId" type="number | undefined">
+  Chat ID from `ctx.chat?.id` or `ctx.businessConnection?.user_chat_id`
+</ParamField>
+
+<ParamField path="ctx.inlineMessageId" type="string | undefined">
+  Inline message ID from `ctx.callbackQuery` or `ctx.chosenInlineResult`
+</ParamField>
+
+<ParamField path="ctx.businessConnectionId" type="string | undefined">
+  Business connection ID from various business-related updates
+</ParamField>
+
+## API Shortcuts
+
+Context provides convenient methods that are shortcuts to `ctx.api.*` with pre-filled parameters.
+
+### Sending Messages
+
+#### `ctx.reply()`
+
+Reply to the current chat:
+
+```typescript
+bot.on('message:text', async (ctx) => {
+  await ctx.reply('You said: ' + ctx.message.text)
+  
+  // Equivalent to:
+  await ctx.api.sendMessage(
+    ctx.chat.id,
+    'You said: ' + ctx.message.text,
+    { message_thread_id: ctx.message.message_thread_id }
+  )
+})
+```
+
+<CodeGroup>
+```typescript Simple Reply
+await ctx.reply('Hello!')
+```
+
+```typescript Reply with Options
+await ctx.reply('Hello!', {
+  parse_mode: 'Markdown',
+  reply_markup: {
+    inline_keyboard: [[
+      { text: 'Button', callback_data: 'btn' }
+    ]]
+  }
+})
+```
+
+```typescript Reply to a Specific Message
+await ctx.reply('Reply!', {
+  reply_parameters: {
+    message_id: ctx.message.message_id
+  }
+})
+```
+</CodeGroup>
+
+#### `ctx.replyWithPhoto()`
+
+```typescript
+await ctx.replyWithPhoto(
+  'https://grammy.dev/images/grammY.png',
+  { caption: 'grammY logo' }
+)
+```
+
+#### Other Reply Methods
+
+- `ctx.replyWithAudio()` - Send audio files
+- `ctx.replyWithDocument()` - Send documents
+- `ctx.replyWithVideo()` - Send videos
+- `ctx.replyWithAnimation()` - Send animations/GIFs
+- `ctx.replyWithVoice()` - Send voice messages
+- `ctx.replyWithVideoNote()` - Send video notes
+- `ctx.replyWithSticker()` - Send stickers
+- `ctx.replyWithDice()` - Send dice
+- `ctx.replyWithPoll()` - Send polls
+- `ctx.replyWithLocation()` - Send locations
+- `ctx.replyWithVenue()` - Send venues
+- `ctx.replyWithContact()` - Send contacts
+- `ctx.replyWithInvoice()` - Send invoices
+- `ctx.replyWithGame()` - Send games
+
+### Forwarding and Copying
+
+#### `ctx.forwardMessage()`
+
+```typescript
+// Forward the current message to another chat
+await ctx.forwardMessage(targetChatId)
+```
+
+#### `ctx.copyMessage()`
+
+```typescript
+// Copy the current message to another chat (without forward header)
+await ctx.copyMessage(targetChatId)
+```
+
+### Message Editing
+
+```typescript
+bot.on('callback_query:data', async (ctx) => {
+  // Edit the message that has the button
+  await ctx.editMessageText('Updated text!')
+  
+  // Edit other properties
+  await ctx.editMessageCaption('New caption')
+  await ctx.editMessageMedia({ type: 'photo', media: 'url' })
+  await ctx.editMessageReplyMarkup({ inline_keyboard: [[]] })
+  
+  // Delete the message
+  await ctx.deleteMessage()
+})
+```
+
+### Callback Query Handling
+
+```typescript
+bot.on('callback_query', async (ctx) => {
+  // Must always answer callback queries!
+  await ctx.answerCallbackQuery()
+  
+  // With an alert
+  await ctx.answerCallbackQuery({
+    text: 'Button clicked!',
+    show_alert: true
+  })
+})
+```
+
+### User and Chat Actions
+
+```typescript
+// Show typing indicator
+await ctx.replyWithChatAction('typing')
+
+// Ban a user
+await ctx.banChatMember(userId)
+
+// Unban a user
+await ctx.unbanChatMember(userId)
+
+// Set chat photo
+await ctx.setChatPhoto({ source: '/path/to/photo.jpg' })
+
+// Leave chat
+await ctx.leaveChat()
+```
+
+## Helper Methods
+
+### `ctx.entities()`
+
+Extract entities from messages:
+
+```typescript
+bot.on('message:text', (ctx) => {
+  // Get all entities with their text
+  const entities = ctx.entities()
+  
+  entities.forEach(entity => {
+    console.log(`${entity.type}: ${entity.text}`)
+  })
+  
+  // Get specific entity types
+  const urls = ctx.entities('url')
+  const mentions = ctx.entities(['mention', 'text_mention'])
+})
+```
+
+### `ctx.reactions()`
+
+Analyze reaction updates:
+
+```typescript
+bot.on('message_reaction', (ctx) => {
+  const r = ctx.reactions()
+  
+  console.log('Current emoji:', r.emoji)
+  console.log('Added emoji:', r.emojiAdded)
+  console.log('Removed emoji:', r.emojiRemoved)
+  console.log('Kept emoji:', r.emojiKept)
+  
+  console.log('Custom emoji:', r.customEmoji)
+  console.log('Has paid reaction:', r.paid)
+  console.log('Just added paid:', r.paidAdded)
+})
+```
+
+## Context Predicates
+
+Test if a context matches certain conditions:
+
+### `ctx.has()`
+
+Check if context matches a filter query:
+
+```typescript
+bot.use((ctx) => {
+  if (ctx.has(':text')) {
+    // ctx is now typed to have text
+    console.log(ctx.msg.text)
+  }
+  
+  if (ctx.has('message:photo')) {
+    // ctx.message and ctx.message.photo are guaranteed
+    console.log('Photo received')
+  }
+})
+```
+
+### Specialized Predicates
+
+```typescript
+if (ctx.hasText('hello')) {
+  // Text is exactly 'hello'
+}
+
+if (ctx.hasText(/^hello/i)) {
+  // Text matches regex
+  console.log(ctx.match) // RegExpMatchArray
+}
+
+if (ctx.hasCommand('start')) {
+  // Has /start command
+  console.log(ctx.match) // Text after command
+}
+
+if (ctx.hasChatType('private')) {
+  // Is a private chat
+}
+
+if (ctx.hasCallbackQuery('button-data')) {
+  // Callback query data matches
+}
+
+if (ctx.hasReaction('👍')) {
+  // New thumbs up reaction
+}
+```
+
+## Static Predicates
+
+Generate reusable predicate functions:
+
+```typescript
+import { Context } from 'grammy'
+
+// Create predicates
+const isAdmin = Context.has.filterQuery(':from:id')
+const hasPhoto = Context.has.filterQuery('message:photo')
+const hasUrl = Context.has.text(/https?:\/\//)
+
+// Use in middleware
+bot.use((ctx) => {
+  if (hasPhoto(ctx)) {
+    // ctx is typed correctly
+    console.log('Photo size:', ctx.message.photo.length)
+  }
+})
+```
+
+## Custom Context
+
+Extend the context with your own properties:
+
+```typescript
+import { Context } from 'grammy'
+
+interface MyContext extends Context {
+  session: {
+    count: number
+    username?: string
+  }
+}
+
+const bot = new Bot<MyContext>('TOKEN')
+
+// Middleware can now access custom properties
+bot.use((ctx) => {
+  ctx.session.count++
+})
+```
+
+### Custom Context Constructor
+
+Create a custom context class:
+
+```typescript
+class MyContext extends Context {
+  constructor(
+    update: Update,
+    api: Api,
+    me: UserFromGetMe
+  ) {
+    super(update, api, me)
+  }
+  
+  // Add custom methods
+  replyWithError(message: string) {
+    return this.reply(`❌ Error: ${message}`)
+  }
+  
+  get userName(): string {
+    return this.from?.first_name ?? 'Unknown'
+  }
+}
+
+// Pass to Bot constructor
+const bot = new Bot('TOKEN', {
+  ContextConstructor: MyContext
+})
+
+bot.on('message', (ctx) => {
+  await ctx.replyWithError('Something went wrong')
+  console.log(`Message from ${ctx.userName}`)
+})
+```
+
+## Type Narrowing
+
+Filter queries automatically narrow context types:
+
+```typescript
+// ctx.message is guaranteed to exist and have text
+bot.on('message:text', (ctx) => {
+  const text: string = ctx.message.text
+  //    ^-- Type is string, not string | undefined
+})
+
+// Multiple properties guaranteed
+bot.on('message:photo', (ctx) => {
+  const photos = ctx.message.photo // Photo[]
+  const caption = ctx.message.caption // string | undefined
+})
+
+// Nested properties
+bot.on('message:entities:url', (ctx) => {
+  const entities = ctx.message.entities // MessageEntity[]
+  // At least one entity is type 'url'
+})
+```
+
+## Context in Action
+
+Here's a complete example showing various context features:
+
+```typescript
+import { Bot } from 'grammy'
+
+const bot = new Bot('TOKEN')
+
+bot.command('start', async (ctx) => {
+  const user = ctx.from
+  await ctx.reply(
+    `Welcome, ${user?.first_name}!\n\n` +
+    `Your ID: ${user?.id}\n` +
+    `Chat ID: ${ctx.chat?.id}\n` +
+    `Message ID: ${ctx.msgId}`
+  )
+})
+
+bot.on('message:text', async (ctx) => {
+  // Extract entities
+  const urls = ctx.entities('url')
+  if (urls.length > 0) {
+    await ctx.reply(
+      `Found ${urls.length} URL(s):\n` +
+      urls.map(e => e.text).join('\n')
+    )
+  }
+})
+
+bot.on('callback_query:data', async (ctx) => {
+  await ctx.answerCallbackQuery('Processing...')
+  
+  const data = ctx.callbackQuery.data
+  if (data === 'delete') {
+    await ctx.deleteMessage()
+  } else {
+    await ctx.editMessageText(`You clicked: ${data}`)
+  }
+})
+
+bot.on('message_reaction', async (ctx) => {
+  const r = ctx.reactions()
+  if (r.emojiAdded.includes('👍')) {
+    await ctx.reply('Thanks for the thumbs up!')
+  }
+})
+
+await bot.start()
+```
+
+## Best Practices
+
+<Tip>
+**Use Shortcuts**
+
+Prefer context shortcuts over direct update access:
+```typescript
+// Good
+const text = ctx.message?.text
+
+// Better
+const text = ctx.msg?.text
+```
+</Tip>
+
+<Tip>
+**Type Safety with Filter Queries**
+
+Use filter queries for automatic type narrowing:
+```typescript
+// No type guards needed
+bot.on('message:text', (ctx) => {
+  const text = ctx.message.text // Type is string
+})
+```
+</Tip>
+
+<Warning>
+**Don't Mutate Context**
+
+The context object should be treated as read-only except for the `match` property and any custom properties you add.
+</Warning>
+
+## Related
+
+- [Middleware](/concepts/middleware) - How context flows through middleware
+- [Filter Queries](/concepts/filter-queries) - Filtering context objects
+- [Bot](/concepts/bot) - The Bot class that creates contexts

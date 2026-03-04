@@ -1,0 +1,549 @@
+---
+title: Built-in Plugins
+description: Comprehensive guide to grammY's built-in utilities and plugins
+---
+
+grammY ships with several powerful built-in utilities that enhance your bot development experience. These are included in the core package and don't require additional dependencies.
+
+## Session Plugin
+
+The session plugin provides persistent data storage for your bot, allowing you to remember information about users and chats across updates.
+
+### Basic Usage
+
+```typescript
+import { Bot, Context, session, SessionFlavor } from 'grammy'
+
+interface SessionData {
+  messageCount: number
+  lastMessage?: string
+}
+
+type MyContext = Context & SessionFlavor<SessionData>
+
+const bot = new Bot<MyContext>('YOUR_BOT_TOKEN')
+
+bot.use(session({
+  initial: () => ({ messageCount: 0 })
+}))
+
+bot.on('message', (ctx) => {
+  ctx.session.messageCount++
+  ctx.session.lastMessage = ctx.message.text
+  ctx.reply(`Message #${ctx.session.messageCount}`)
+})
+```
+
+### Session Options
+
+The session plugin accepts several configuration options:
+
+```typescript
+bot.use(session({
+  // Provide initial session data
+  initial: () => ({ count: 0 }),
+  
+  // Custom session key generation
+  getSessionKey: (ctx) => {
+    // Store sessions per user instead of per chat
+    return ctx.from?.id.toString()
+  },
+  
+  // Storage adapter (defaults to in-memory)
+  storage: myStorageAdapter,
+  
+  // Optional prefix for session keys
+  prefix: 'my-bot:'
+}))
+```
+
+### Storage Adapters
+
+By default, sessions are stored in memory and will be lost when your bot restarts. For production, use a storage adapter:
+
+```typescript
+import { MemorySessionStorage } from 'grammy'
+
+// In-memory storage with TTL
+const storage = new MemorySessionStorage(60 * 60 * 1000) // 1 hour TTL
+
+bot.use(session({ storage }))
+```
+
+For persistent storage, use external adapters (see the grammY documentation for database adapters).
+
+### Custom Storage Adapter
+
+You can create your own storage adapter:
+
+```typescript
+import { StorageAdapter } from 'grammy'
+
+class MyStorage<T> implements StorageAdapter<T> {
+  private data = new Map<string, T>()
+  
+  read(key: string): T | undefined {
+    return this.data.get(key)
+  }
+  
+  write(key: string, value: T): void {
+    this.data.set(key, value)
+  }
+  
+  delete(key: string): void {
+    this.data.delete(key)
+  }
+}
+
+bot.use(session({ storage: new MyStorage() }))
+```
+
+### Lazy Sessions
+
+For better performance, especially in groups, use lazy sessions that only load data when accessed:
+
+```typescript
+import { lazySession, LazySessionFlavor } from 'grammy'
+
+type MyContext = Context & LazySessionFlavor<SessionData>
+
+const bot = new Bot<MyContext>('YOUR_BOT_TOKEN')
+
+bot.use(lazySession({
+  initial: () => ({ count: 0 })
+}))
+
+bot.on('message', async (ctx) => {
+  // Session is loaded on first access
+  const session = await ctx.session
+  session.count++
+})
+```
+
+### Multi Sessions
+
+Manage multiple independent session namespaces:
+
+```typescript
+interface UserSession {
+  language: string
+}
+
+interface ChatSession {
+  settings: { welcome: boolean }
+}
+
+type MyContext = Context & SessionFlavor<{
+  user: UserSession
+  chat: ChatSession
+}>
+
+const bot = new Bot<MyContext>('YOUR_BOT_TOKEN')
+
+bot.use(session({
+  type: 'multi',
+  user: {
+    initial: () => ({ language: 'en' }),
+    getSessionKey: (ctx) => ctx.from?.id.toString(),
+  },
+  chat: {
+    initial: () => ({ settings: { welcome: true } }),
+    getSessionKey: (ctx) => ctx.chat?.id.toString(),
+  },
+}))
+
+bot.on('message', (ctx) => {
+  console.log(ctx.session.user.language)
+  console.log(ctx.session.chat.settings.welcome)
+})
+```
+
+### Enhanced Sessions
+
+Add migrations and expiry to sessions:
+
+```typescript
+import { enhanceStorage } from 'grammy'
+
+const storage = enhanceStorage({
+  storage: new MemorySessionStorage(),
+  millisecondsToLive: 24 * 60 * 60 * 1000, // 24 hours
+  migrations: {
+    1: (old) => ({ ...old, version: 1 }),
+    2: (old) => ({ ...old, newField: 'default' }),
+  },
+})
+
+bot.use(session({ storage }))
+```
+
+## Keyboard Builders
+
+grammY provides two keyboard builder classes for creating custom and inline keyboards easily.
+
+### Custom Keyboards (Keyboard)
+
+Custom keyboards replace the user's system keyboard:
+
+```typescript
+import { Keyboard } from 'grammy'
+
+const keyboard = new Keyboard()
+  .text('Button 1').text('Button 2').row()
+  .text('Button 3').text('Button 4')
+
+await ctx.reply('Choose an option:', {
+  reply_markup: keyboard
+})
+```
+
+### Keyboard Options
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Yes').text('No')
+  .resized()           // Make keyboard smaller
+  .oneTime()           // Hide after button press
+  .persistent()        // Show keyboard persistently
+  .selected()          // Show only to mentioned users
+  .placeholder('Choose an option...')
+
+await ctx.reply('Question?', { reply_markup: keyboard })
+```
+
+### Button Types
+
+```typescript
+const keyboard = new Keyboard()
+  // Text button
+  .text('Send text')
+  
+  // Request user's contact
+  .requestContact('Share contact')
+  
+  // Request user's location
+  .requestLocation('Share location')
+  
+  // Request a poll
+  .requestPoll('Create poll', 'quiz')
+  
+  // Request users
+  .requestUsers('Select users', 123)
+  
+  // Request a chat
+  .requestChat('Select chat', 456, { chat_is_channel: false })
+  
+  // Web app button
+  .webApp('Open app', 'https://example.com')
+```
+
+### Button Styling
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Danger').danger()     // Red button
+  .text('Success').success()   // Green button
+  .text('Primary').primary()   // Blue button
+  .text('Default')             // Default style
+```
+
+### Keyboard Layout Methods
+
+```typescript
+// Transpose rows and columns
+const transposed = keyboard.toTransposed()
+
+// Reflow to specific number of columns
+const flowed = keyboard.toFlowed(3)
+
+// Clone a keyboard
+const clone = keyboard.clone()
+
+// Append another keyboard
+keyboard.append(anotherKeyboard)
+```
+
+### Removing Keyboards
+
+```typescript
+import { Keyboard } from 'grammy'
+
+await ctx.reply('Keyboard removed', {
+  reply_markup: { remove_keyboard: true }
+})
+```
+
+### Inline Keyboards (InlineKeyboard)
+
+Inline keyboards appear directly below messages:
+
+```typescript
+import { InlineKeyboard } from 'grammy'
+
+const keyboard = new InlineKeyboard()
+  .text('Button 1', 'callback-data-1')
+  .text('Button 2', 'callback-data-2').row()
+  .url('Visit Website', 'https://grammy.dev')
+
+await ctx.reply('Choose:', { reply_markup: keyboard })
+
+// Handle button clicks
+bot.callbackQuery('callback-data-1', async (ctx) => {
+  await ctx.answerCallbackQuery('You clicked Button 1!')
+  await ctx.editMessageText('Button 1 was clicked')
+})
+```
+
+### Inline Button Types
+
+```typescript
+const keyboard = new InlineKeyboard()
+  // Callback data button
+  .text('Click me', 'my-callback-data')
+  
+  // URL button
+  .url('Visit', 'https://example.com')
+  
+  // Web app button
+  .webApp('Open app', 'https://app.example.com')
+  
+  // Login button
+  .login('Login', 'https://example.com/auth')
+  
+  // Switch inline query
+  .switchInline('Share')
+  .switchInlineCurrent('Share here', 'query')
+  .switchInlineChosen('Share to...', { allow_user_chats: true })
+  
+  // Copy text button
+  .copyText('Copy', 'Text to copy')
+  
+  // Game button
+  .game('Play game')
+  
+  // Payment button
+  .pay('Pay 10 XTR')
+```
+
+### Inline Keyboard Styling
+
+```typescript
+const keyboard = new InlineKeyboard()
+  .text('Delete', 'delete').danger()
+  .text('Confirm', 'confirm').success()
+  .text('Info', 'info').primary()
+```
+
+### Dynamic Keyboards
+
+Build keyboards from data:
+
+```typescript
+const items = ['Apple', 'Banana', 'Cherry']
+
+const keyboard = new InlineKeyboard()
+items.forEach((item, index) => {
+  keyboard.text(item, `item:${index}`)
+  if ((index + 1) % 2 === 0) keyboard.row()
+})
+
+await ctx.reply('Choose a fruit:', { reply_markup: keyboard })
+```
+
+## Webhook Callback
+
+The webhook callback utility makes it easy to run your bot on webhooks with any web framework.
+
+### Basic Usage
+
+```typescript
+import { webhookCallback } from 'grammy'
+import express from 'express'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+const app = express()
+
+// Use the webhook callback
+app.use(express.json())
+app.post('/webhook', webhookCallback(bot, 'express'))
+
+app.listen(3000)
+```
+
+### Supported Frameworks
+
+grammY supports many web frameworks:
+
+```typescript
+// Express
+app.post('/webhook', webhookCallback(bot, 'express'))
+
+// Fastify
+fastify.post('/webhook', webhookCallback(bot, 'fastify'))
+
+// Koa
+router.post('/webhook', webhookCallback(bot, 'koa'))
+
+// NestJS
+webhookCallback(bot, 'http') // Node.js http module
+
+// Next.js API route
+export default webhookCallback(bot, 'next-js')
+
+// Vercel serverless
+export default webhookCallback(bot, 'std-http')
+
+// Cloudflare Workers
+export default { fetch: webhookCallback(bot, 'cloudflare') }
+
+// Deno
+Serve(webhookCallback(bot, 'std-http'))
+```
+
+### Webhook Options
+
+```typescript
+webhookCallback(bot, 'express', {
+  // Timeout handling
+  timeoutMilliseconds: 10000,
+  onTimeout: 'throw', // or 'return' or custom function
+  
+  // Secret token validation
+  secretToken: 'my-secret-token',
+})
+```
+
+### Setting the Webhook
+
+Before using webhooks, set the webhook URL:
+
+```typescript
+await bot.api.setWebhook('https://example.com/webhook', {
+  secret_token: 'my-secret-token',
+  allowed_updates: ['message', 'callback_query'],
+})
+```
+
+## Inline Query Result Builder
+
+The `InlineQueryResultBuilder` helps create inline query results easily.
+
+### Basic Usage
+
+```typescript
+import { InlineQueryResultBuilder } from 'grammy'
+
+bot.on('inline_query', async (ctx) => {
+  const results = [
+    InlineQueryResultBuilder.article(
+      'id-1',
+      'Result Title',
+    ).text('This is the message content'),
+    
+    InlineQueryResultBuilder.photo(
+      'id-2',
+      'https://grammy.dev/images/Y.png',
+    ),
+    
+    InlineQueryResultBuilder.audio(
+      'id-3',
+      'Audio Title',
+      'https://example.com/audio.mp3',
+    ),
+  ]
+  
+  await ctx.answerInlineQuery(results)
+})
+```
+
+### Result Types
+
+```typescript
+// Article (requires calling .text() or other content method)
+InlineQueryResultBuilder.article('id', 'Title')
+  .text('Message content')
+
+// Photo
+InlineQueryResultBuilder.photo('id', 'photo-url')
+
+// Cached photo
+InlineQueryResultBuilder.photoCached('id', 'file-id')
+
+// Video
+InlineQueryResultBuilder.videoMp4(
+  'id',
+  'Title',
+  'video-url',
+  'thumbnail-url'
+)
+
+// Audio
+InlineQueryResultBuilder.audio('id', 'Title', 'audio-url')
+
+// Document
+InlineQueryResultBuilder.documentPdf('id', 'Title', 'doc-url')
+
+// Location
+InlineQueryResultBuilder.location('id', 'Title', 40.7128, -74.0060)
+
+// Venue
+InlineQueryResultBuilder.venue(
+  'id',
+  'Place Name',
+  40.7128,
+  -74.0060,
+  'Address'
+)
+
+// Contact
+InlineQueryResultBuilder.contact('id', '+1234567890', 'John Doe')
+
+// Game
+InlineQueryResultBuilder.game('id', 'game-short-name')
+
+// GIF
+InlineQueryResultBuilder.gif('id', 'gif-url', 'thumb-url')
+
+// Voice
+InlineQueryResultBuilder.voice('id', 'Title', 'voice-url')
+```
+
+### Custom Message Content
+
+Override the sent message content:
+
+```typescript
+const result = InlineQueryResultBuilder
+  .photo('id', 'https://example.com/photo.jpg')
+  .text('Custom message text when photo is selected')
+
+// Or other content types
+const result2 = InlineQueryResultBuilder
+  .article('id', 'Article')
+  .location(40.7128, -74.0060)
+
+const result3 = InlineQueryResultBuilder
+  .article('id', 'Contact')
+  .contact('John Doe', '+1234567890')
+```
+
+### With Inline Keyboard
+
+```typescript
+import { InlineKeyboard, InlineQueryResultBuilder } from 'grammy'
+
+const keyboard = new InlineKeyboard()
+  .url('Visit', 'https://grammy.dev')
+
+const result = InlineQueryResultBuilder
+  .article('id', 'Title')
+  .text('Content', {
+    reply_markup: keyboard,
+  })
+```
+
+## Next Steps
+
+- Explore [Creating Custom Plugins](/plugins/creating-plugins)
+- Check out [official plugins](https://grammy.dev/plugins/) for more features
+- Read about the [Context object](/guide/context) to understand middleware better

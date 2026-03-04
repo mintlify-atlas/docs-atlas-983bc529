@@ -1,0 +1,472 @@
+---
+title: Deployment
+description: Deploy your grammY bot to production on various platforms
+icon: rocket
+---
+
+# Deployment
+
+This guide covers deploying grammY bots to various platforms and environments. Choose the platform that best fits your needs.
+
+## Platform Comparison
+
+<CardGroup cols={2}>
+  <Card title="Traditional Servers" icon="server">
+    VPS, dedicated servers, or containers. Full control, always running.
+  </Card>
+  <Card title="Serverless" icon="bolt">
+    Function-as-a-Service platforms. Pay per use, automatic scaling.
+  </Card>
+  <Card title="PaaS" icon="cloud">
+    Platform-as-a-Service like Heroku or Railway. Easy deployment.
+  </Card>
+  <Card title="Edge Computing" icon="globe">
+    Cloudflare Workers, Deno Deploy. Global distribution.
+  </Card>
+</CardGroup>
+
+## Deployment Checklist
+
+Before deploying:
+
+- [ ] Use environment variables for sensitive data (bot token, API keys)
+- [ ] Set up error logging and monitoring
+- [ ] Choose between long polling (always-on servers) or webhooks (serverless/scalable)
+- [ ] Configure production error handling
+- [ ] Test your bot thoroughly
+- [ ] Set up automatic restarts for long polling bots
+- [ ] Consider rate limiting and abuse prevention
+
+## Traditional Server Deployment
+
+### Using PM2 (Node.js)
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Start your bot
+pm2 start bot.js --name "my-bot"
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on boot
+pm2 startup
+```
+
+**ecosystem.config.js** for PM2:
+
+```javascript
+module.exports = {
+  apps: [{
+    name: "telegram-bot",
+    script: "./dist/bot.js",
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: "1G",
+    env: {
+      NODE_ENV: "production",
+    },
+  }],
+};
+```
+
+### Using systemd (Linux)
+
+**/etc/systemd/system/telegram-bot.service**:
+
+```ini
+[Unit]
+Description=Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=botuser
+WorkingDirectory=/home/botuser/bot
+Environment="NODE_ENV=production"
+EnvironmentFile=/home/botuser/bot/.env
+ExecStart=/usr/bin/node /home/botuser/bot/dist/bot.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl enable telegram-bot
+sudo systemctl start telegram-bot
+sudo systemctl status telegram-bot
+```
+
+## Docker Deployment
+
+**Dockerfile**:
+
+```dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source
+COPY . .
+
+# Build if using TypeScript
+RUN npm run build
+
+# Start bot
+CMD ["node", "dist/bot.js"]
+```
+
+**docker-compose.yml**:
+
+```yaml
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - NODE_ENV=production
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+```
+
+Deploy:
+
+```bash
+docker-compose up -d
+```
+
+## Serverless Platforms
+
+### Cloudflare Workers
+
+```typescript
+import { Bot, webhookCallback } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message", (ctx) => ctx.reply("Hello from Cloudflare!"));
+
+export default {
+  async fetch(request: Request, env: any) {
+    if (request.method === "POST") {
+      return await webhookCallback(bot, "cloudflare")(request);
+    }
+    return new Response("OK");
+  },
+};
+```
+
+**wrangler.toml**:
+
+```toml
+name = "telegram-bot"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+BOT_TOKEN = "your_token_here"
+```
+
+Deploy:
+
+```bash
+npx wrangler deploy
+```
+
+### Deno Deploy
+
+```typescript
+import { Bot, webhookCallback } from "https://deno.land/x/grammy/mod.ts";
+
+const bot = new Bot(Deno.env.get("BOT_TOKEN")!);
+
+bot.on("message", (ctx) => ctx.reply("Hello from Deno!"));
+
+const handleUpdate = webhookCallback(bot, "std/http");
+
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
+  if (url.pathname === "/webhook" && req.method === "POST") {
+    return await handleUpdate(req);
+  }
+  return new Response("Not Found", { status: 404 });
+});
+```
+
+Deploy:
+
+```bash
+deployctl deploy --project=my-bot --entrypoint=bot.ts
+```
+
+### Vercel
+
+**api/webhook.ts**:
+
+```typescript
+import { Bot, webhookCallback } from "grammy";
+
+const bot = new Bot(process.env.BOT_TOKEN!);
+
+bot.on("message", (ctx) => ctx.reply("Hello from Vercel!"));
+
+export default webhookCallback(bot, "std/http");
+```
+
+**vercel.json**:
+
+```json
+{
+  "functions": {
+    "api/webhook.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
+}
+```
+
+Deploy:
+
+```bash
+vercel --prod
+```
+
+### AWS Lambda
+
+```typescript
+import { Bot, webhookCallback } from "grammy";
+import { APIGatewayProxyHandler } from "aws-lambda";
+
+const bot = new Bot(process.env.BOT_TOKEN!);
+
+bot.on("message", (ctx) => ctx.reply("Hello from Lambda!"));
+
+const handleUpdate = webhookCallback(bot, "aws-lambda");
+
+export const handler: APIGatewayProxyHandler = async (event, context) => {
+  return await handleUpdate(event, context);
+};
+```
+
+## Platform-as-a-Service
+
+### Railway
+
+1. Connect your GitHub repository
+2. Add environment variables (BOT_TOKEN)
+3. Railway auto-detects Node.js and deploys
+4. For webhooks, use the provided domain
+
+### Heroku
+
+**Procfile**:
+
+```
+web: node dist/bot.js
+```
+
+**package.json** (add):
+
+```json
+{
+  "engines": {
+    "node": "20.x"
+  }
+}
+```
+
+Deploy:
+
+```bash
+heroku login
+heroku create my-telegram-bot
+heroku config:set BOT_TOKEN=your_token
+git push heroku main
+```
+
+### Render
+
+1. Connect GitHub repository
+2. Select "Web Service" for webhooks or "Background Worker" for polling
+3. Set build command: `npm install && npm run build`
+4. Set start command: `node dist/bot.js`
+5. Add BOT_TOKEN environment variable
+
+## Environment Variables
+
+**.env.example**:
+
+```bash
+BOT_TOKEN=your_bot_token_here
+WEBHOOK_URL=https://your-domain.com/webhook
+WEBHOOK_SECRET=your_secret_token
+NODE_ENV=production
+PORT=8080
+```
+
+**Loading environment variables**:
+
+```typescript
+import { config } from "dotenv";
+
+// Load .env file in development
+if (process.env.NODE_ENV !== "production") {
+  config();
+}
+
+const BOT_TOKEN = process.env.BOT_TOKEN;
+if (!BOT_TOKEN) {
+  throw new Error("BOT_TOKEN is not set");
+}
+```
+
+## Production Configuration
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot(process.env.BOT_TOKEN!);
+
+// Production error handling
+bot.catch((err) => {
+  console.error("Bot error:", err);
+  // Send to error tracking service (Sentry, etc.)
+});
+
+// Choose deployment method based on environment
+if (process.env.USE_WEBHOOKS === "true") {
+  // Webhook setup
+  const webhookUrl = process.env.WEBHOOK_URL!;
+  await bot.api.setWebhook(webhookUrl, {
+    secret_token: process.env.WEBHOOK_SECRET,
+    drop_pending_updates: true,
+  });
+  
+  // Start web server
+  // (Express/Fastify/etc. code)
+} else {
+  // Long polling
+  bot.start({
+    drop_pending_updates: true,
+    onStart: ({ username }) => {
+      console.log(`Bot @${username} started`);
+    },
+  });
+}
+
+// Graceful shutdown
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
+```
+
+## Monitoring
+
+### Health Check Endpoint
+
+```typescript
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+```
+
+### Error Tracking (Sentry)
+
+```typescript
+import * as Sentry from "@sentry/node";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV,
+});
+
+bot.catch((err) => {
+  console.error("Bot error:", err);
+  Sentry.captureException(err.error);
+});
+```
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Protect Your Token" icon="key">
+    Never commit tokens to git. Use environment variables and secrets management.
+  </Card>
+  <Card title="Validate Webhooks" icon="shield-check">
+    Use secret tokens to verify webhook requests are from Telegram.
+  </Card>
+  <Card title="Rate Limiting" icon="gauge">
+    Implement rate limiting to prevent abuse.
+  </Card>
+  <Card title="HTTPS Only" icon="lock">
+    Use HTTPS for webhooks. Telegram requires valid SSL certificates.
+  </Card>
+</CardGroup>
+
+## Performance Tips
+
+- Use webhooks instead of polling in production
+- Enable concurrent update processing when appropriate
+- Implement caching for frequently accessed data
+- Use database connection pooling
+- Monitor and optimize slow handlers
+- Set appropriate `max_connections` for webhooks
+
+## Scaling
+
+### Horizontal Scaling
+
+For high-traffic bots:
+
+1. Use webhooks with a load balancer
+2. Run multiple instances behind the load balancer
+3. Use a shared database/cache (Redis, PostgreSQL)
+4. Ensure stateless bot handlers
+
+### Database
+
+For persistent storage:
+
+```typescript
+import { Bot, session } from "grammy";
+import { MongoDBAdapter } from "@grammyjs/storage-mongodb";
+import { MongoClient } from "mongodb";
+
+const client = new MongoClient(process.env.MONGODB_URI!);
+await client.connect();
+
+const db = client.db("telegram-bot");
+const storage = new MongoDBAdapter({ collection: db.collection("sessions") });
+
+bot.use(session({
+  initial: () => ({}),
+  storage,
+}));
+```
+
+## See Also
+
+- [Webhooks](/advanced/webhooks)
+- [Long Polling](/advanced/long-polling)
+- [Error Handling](/concepts/error-handling)
+- [Bot API Documentation](https://core.telegram.org/bots/api)

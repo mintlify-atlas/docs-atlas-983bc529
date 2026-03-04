@@ -1,0 +1,731 @@
+---
+title: Context
+description: The context object containing update information and API methods
+icon: messages
+---
+
+The `Context` class is passed to all middleware functions in grammY. It wraps the update object from Telegram and provides convenient shortcuts for accessing information and calling API methods.
+
+## Constructor
+
+```typescript
+new Context(update: Update, api: Api, me: UserFromGetMe)
+```
+
+<ParamField path="update" type="Update" required>
+  The update object from Telegram
+</ParamField>
+
+<ParamField path="api" type="Api" required>
+  An API instance for calling Bot API methods
+</ParamField>
+
+<ParamField path="me" type="UserFromGetMe" required>
+  Information about the bot itself
+</ParamField>
+
+**Note:** You typically don't create Context objects manually. grammY creates them for you when processing updates.
+
+## Core Properties
+
+<ResponseField name="update" type="Update">
+  The complete update object from Telegram containing all information about the incoming update.
+  
+  ```typescript
+  bot.on('message', (ctx) => {
+    console.log(ctx.update.update_id)
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="api" type="Api">
+  Full access to the Telegram Bot API. Allows you to call any API method.
+  
+  ```typescript
+  ctx.api.sendMessage(chatId, 'Hello!')
+  ```
+  
+  **Tip:** Use context shortcuts like `ctx.reply()` instead of calling API methods directly when possible.
+</ResponseField>
+
+<ResponseField name="me" type="UserFromGetMe">
+  Information about the bot itself as returned by `getMe()`.
+  
+  ```typescript
+  console.log(`Bot username: @${ctx.me.username}`)
+  ```
+</ResponseField>
+
+<ResponseField name="match" type="string | RegExpMatchArray | undefined">
+  Used by some middleware to store information about how a string or regular expression was matched.
+  
+  - For `bot.command()`: Contains the text after the command
+  - For `bot.hears()` with regex: Contains the `RegExpMatchArray`
+  
+  ```typescript
+  bot.command('start', (ctx) => {
+    console.log('Payload:', ctx.match) // Deep linking payload
+  })
+  
+  bot.hears(/\/echo (.+)/, (ctx) => {
+    const text = ctx.match[1] // Captured group
+    ctx.reply(text)
+  })
+  ```
+</ResponseField>
+
+## Update Shortcuts
+
+These properties provide quick access to different parts of the update object.
+
+<ResponseField name="message" type="Message | undefined">
+  Alias for `ctx.update.message`
+</ResponseField>
+
+<ResponseField name="editedMessage" type="Message | undefined">
+  Alias for `ctx.update.edited_message`
+</ResponseField>
+
+<ResponseField name="channelPost" type="Message | undefined">
+  Alias for `ctx.update.channel_post`
+</ResponseField>
+
+<ResponseField name="editedChannelPost" type="Message | undefined">
+  Alias for `ctx.update.edited_channel_post`
+</ResponseField>
+
+<ResponseField name="businessMessage" type="Message | undefined">
+  Alias for `ctx.update.business_message`
+</ResponseField>
+
+<ResponseField name="editedBusinessMessage" type="Message | undefined">
+  Alias for `ctx.update.edited_business_message`
+</ResponseField>
+
+<ResponseField name="callbackQuery" type="CallbackQuery | undefined">
+  Alias for `ctx.update.callback_query`
+</ResponseField>
+
+<ResponseField name="inlineQuery" type="InlineQuery | undefined">
+  Alias for `ctx.update.inline_query`
+</ResponseField>
+
+<ResponseField name="messageReaction" type="MessageReactionUpdated | undefined">
+  Alias for `ctx.update.message_reaction`
+</ResponseField>
+
+<ResponseField name="myChatMember" type="ChatMemberUpdated | undefined">
+  Alias for `ctx.update.my_chat_member`
+</ResponseField>
+
+<ResponseField name="chatMember" type="ChatMemberUpdated | undefined">
+  Alias for `ctx.update.chat_member`
+</ResponseField>
+
+And many more for other update types. See the [Telegram Bot API documentation](https://core.telegram.org/bots/api#update) for all available update types.
+
+## Aggregation Shortcuts
+
+These properties aggregate data from multiple possible sources in the update.
+
+<ResponseField name="msg" type="Message | undefined">
+  Get the message object from wherever possible. Checks:
+  - `message`
+  - `editedMessage`
+  - `channelPost`
+  - `editedChannelPost`
+  - `businessMessage`
+  - `editedBusinessMessage`
+  - `callbackQuery.message`
+  
+  Returns the first non-undefined value.
+  
+  ```typescript
+  bot.on('message', (ctx) => {
+    console.log(ctx.msg.text) // Works for regular and edited messages
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="chat" type="Chat | undefined">
+  Get the chat object from wherever possible.
+  
+  ```typescript
+  console.log(`Chat ID: ${ctx.chat?.id}`)
+  console.log(`Chat type: ${ctx.chat?.type}`)
+  ```
+</ResponseField>
+
+<ResponseField name="from" type="User | undefined">
+  Get the user object (message sender) from wherever possible.
+  
+  ```typescript
+  console.log(`User: ${ctx.from?.first_name}`)
+  console.log(`User ID: ${ctx.from?.id}`)
+  ```
+</ResponseField>
+
+<ResponseField name="senderChat" type="Chat | undefined">
+  Get the sender chat object. Alias for `ctx.msg?.sender_chat`.
+</ResponseField>
+
+<ResponseField name="msgId" type="number | undefined">
+  Get the message identifier from wherever possible.
+  
+  ```typescript
+  console.log(`Message ID: ${ctx.msgId}`)
+  ```
+</ResponseField>
+
+<ResponseField name="chatId" type="number | undefined">
+  Get the chat identifier from wherever possible.
+  
+  ```typescript
+  const chatId = ctx.chatId
+  if (chatId) {
+    await ctx.api.sendMessage(chatId, 'Hello!')
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="inlineMessageId" type="string | undefined">
+  Get the inline message identifier from callback queries or chosen inline results.
+</ResponseField>
+
+<ResponseField name="businessConnectionId" type="string | undefined">
+  Get the business connection identifier from wherever possible.
+</ResponseField>
+
+## Utility Methods
+
+### entities
+
+Extracts entities from the message text or caption.
+
+```typescript
+ctx.entities(types?: MessageEntity['type'] | MessageEntity['type'][]): Array<MessageEntity & { text: string }>
+```
+
+<ParamField path="types" type="string | string[]">
+  Optional filter for specific entity types (e.g., `'url'`, `'mention'`, `'hashtag'`)
+</ParamField>
+
+<ResponseField name="return" type="Array<MessageEntity & { text: string }>">
+  Array of entities with their extracted text. Returns empty array if no text or entities found.
+</ResponseField>
+
+**Example:**
+
+```typescript
+bot.on('message:entities', (ctx) => {
+  // Get all entities
+  const allEntities = ctx.entities()
+  console.log('All entities:', allEntities)
+  
+  // Get only URLs
+  const urls = ctx.entities('url')
+  urls.forEach(entity => {
+    console.log('URL found:', entity.text)
+  })
+  
+  // Get URLs and mentions
+  const mixed = ctx.entities(['url', 'mention'])
+})
+```
+
+### reactions
+
+Analyzes message reaction updates to determine which reactions were added, removed, or kept.
+
+```typescript
+ctx.reactions(): ReactionInfo
+```
+
+<ResponseField name="return" type="ReactionInfo">
+  Object containing information about the reaction update:
+  
+  <Expandable title="ReactionInfo properties">
+    <ResponseField name="emoji" type="string[]">
+      Emoji currently present in this user's reaction
+    </ResponseField>
+    <ResponseField name="emojiAdded" type="string[]">
+      Emoji newly added to this user's reaction
+    </ResponseField>
+    <ResponseField name="emojiKept" type="string[]">
+      Emoji not changed by the update
+    </ResponseField>
+    <ResponseField name="emojiRemoved" type="string[]">
+      Emoji removed from this user's reaction
+    </ResponseField>
+    <ResponseField name="customEmoji" type="string[]">
+      Custom emoji IDs currently present
+    </ResponseField>
+    <ResponseField name="customEmojiAdded" type="string[]">
+      Custom emoji IDs newly added
+    </ResponseField>
+    <ResponseField name="customEmojiKept" type="string[]">
+      Custom emoji IDs not changed
+    </ResponseField>
+    <ResponseField name="customEmojiRemoved" type="string[]">
+      Custom emoji IDs removed
+    </ResponseField>
+    <ResponseField name="paid" type="boolean">
+      Whether a paid reaction is currently present
+    </ResponseField>
+    <ResponseField name="paidAdded" type="boolean">
+      Whether a paid reaction was newly added
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example:**
+
+```typescript
+bot.on('message_reaction', (ctx) => {
+  const reactions = ctx.reactions()
+  
+  if (reactions.emojiAdded.includes('👍')) {
+    console.log('User added thumbs up!')
+  }
+  
+  if (reactions.emojiRemoved.length > 0) {
+    console.log('Removed reactions:', reactions.emojiRemoved)
+  }
+  
+  console.log('Current reactions:', reactions.emoji)
+})
+```
+
+## Context Probing Methods
+
+These methods check if the context matches certain conditions.
+
+### has
+
+Checks if the context matches a filter query.
+
+```typescript
+ctx.has(filter: FilterQuery | FilterQuery[]): boolean
+```
+
+<ParamField path="filter" type="FilterQuery | FilterQuery[]" required>
+  The filter query to check
+</ParamField>
+
+**Example:**
+
+```typescript
+bot.on('message', (ctx) => {
+  if (ctx.has(':text')) {
+    console.log('Message has text')
+  }
+  
+  if (ctx.has('message:entities:url')) {
+    console.log('Message contains URLs')
+  }
+})
+```
+
+### hasText
+
+Checks if the context contains specific text or matches a regex.
+
+```typescript
+ctx.hasText(trigger: string | RegExp | Array<string | RegExp>): boolean
+```
+
+### hasCommand
+
+Checks if the context contains a specific command.
+
+```typescript
+ctx.hasCommand(command: string | string[]): boolean
+```
+
+### hasReaction
+
+Checks if the context contains a specific reaction.
+
+```typescript
+ctx.hasReaction(reaction: ReactionType | ReactionType[]): boolean
+```
+
+### hasChatType
+
+Checks if the context belongs to a specific chat type.
+
+```typescript
+ctx.hasChatType(chatType: Chat['type'] | Chat['type'][]): boolean
+```
+
+**Example:**
+
+```typescript
+bot.on('message', (ctx) => {
+  if (ctx.hasChatType('private')) {
+    console.log('Private chat message')
+  }
+})
+```
+
+## Static Methods
+
+### Context.has
+
+Provides static methods to generate predicate functions for context probing.
+
+```typescript
+const hasText = Context.has.filterQuery(':text')
+if (hasText(ctx)) {
+  console.log('Has text:', ctx.msg.text)
+}
+
+const hasCommand = Context.has.command('start')
+if (hasCommand(ctx)) {
+  console.log('Is start command')
+}
+```
+
+## API Shortcut Methods
+
+The Context class provides convenient shortcuts for common API operations.
+
+### reply
+
+Sends a text message to the same chat.
+
+```typescript
+await ctx.reply(text: string, other?: SendMessageOptions, signal?: AbortSignal): Promise<Message>
+```
+
+<ParamField path="text" type="string" required>
+  Text of the message to send (1-4096 characters)
+</ParamField>
+
+<ParamField path="other" type="object">
+  Optional parameters like `parse_mode`, `reply_markup`, etc.
+</ParamField>
+
+**Example:**
+
+```typescript
+bot.command('start', async (ctx) => {
+  await ctx.reply('Welcome to the bot!')
+  
+  await ctx.reply('**Bold text**', {
+    parse_mode: 'Markdown'
+  })
+})
+```
+
+### replyWithPhoto
+
+Sends a photo to the same chat.
+
+```typescript
+await ctx.replyWithPhoto(photo: InputFile | string, other?: SendPhotoOptions): Promise<Message>
+```
+
+**Example:**
+
+```typescript
+import { InputFile } from 'grammy'
+
+bot.command('photo', async (ctx) => {
+  // From file
+  await ctx.replyWithPhoto(new InputFile('/path/to/photo.jpg'))
+  
+  // From URL
+  await ctx.replyWithPhoto('https://example.com/photo.jpg')
+  
+  // From file_id
+  await ctx.replyWithPhoto('AgACAgIAAxkBAAI...')
+  
+  // With caption
+  await ctx.replyWithPhoto(photo, {
+    caption: 'Look at this photo!'
+  })
+})
+```
+
+### replyWithAudio
+
+Sends an audio file.
+
+```typescript
+await ctx.replyWithAudio(audio: InputFile | string, other?: SendAudioOptions): Promise<Message>
+```
+
+### replyWithDocument
+
+Sends a document file.
+
+```typescript
+await ctx.replyWithDocument(document: InputFile | string, other?: SendDocumentOptions): Promise<Message>
+```
+
+### replyWithVideo
+
+Sends a video file.
+
+```typescript
+await ctx.replyWithVideo(video: InputFile | string, other?: SendVideoOptions): Promise<Message>
+```
+
+### replyWithAnimation
+
+Sends an animation (GIF or video without sound).
+
+```typescript
+await ctx.replyWithAnimation(animation: InputFile | string, other?: SendAnimationOptions): Promise<Message>
+```
+
+### replyWithVoice
+
+Sends a voice message.
+
+```typescript
+await ctx.replyWithVoice(voice: InputFile | string, other?: SendVoiceOptions): Promise<Message>
+```
+
+### replyWithVideoNote
+
+Sends a video note (round video message).
+
+```typescript
+await ctx.replyWithVideoNote(videoNote: InputFile | string, other?: SendVideoNoteOptions): Promise<Message>
+```
+
+### replyWithMediaGroup
+
+Sends a group of photos, videos, documents or audios as an album.
+
+```typescript
+await ctx.replyWithMediaGroup(media: InputMedia[], other?: SendMediaGroupOptions): Promise<Message[]>
+```
+
+### replyWithLocation
+
+Sends a location point.
+
+```typescript
+await ctx.replyWithLocation(latitude: number, longitude: number, other?: SendLocationOptions): Promise<Message>
+```
+
+**Example:**
+
+```typescript
+bot.command('location', (ctx) => {
+  ctx.replyWithLocation(51.5074, -0.1278, {
+    // London coordinates
+  })
+})
+```
+
+### replyWithVenue
+
+Sends information about a venue.
+
+```typescript
+await ctx.replyWithVenue(
+  latitude: number,
+  longitude: number,
+  title: string,
+  address: string,
+  other?: SendVenueOptions
+): Promise<Message>
+```
+
+### replyWithContact
+
+Sends a phone contact.
+
+```typescript
+await ctx.replyWithContact(
+  phoneNumber: string,
+  firstName: string,
+  other?: SendContactOptions
+): Promise<Message>
+```
+
+### replyWithPoll
+
+Sends a native poll.
+
+```typescript
+await ctx.replyWithPoll(
+  question: string,
+  options: string[],
+  other?: SendPollOptions
+): Promise<Message>
+```
+
+**Example:**
+
+```typescript
+bot.command('poll', (ctx) => {
+  ctx.replyWithPoll(
+    'What is your favorite color?',
+    ['Red', 'Blue', 'Green', 'Yellow'],
+    {
+      is_anonymous: false
+    }
+  )
+})
+```
+
+### replyWithDice
+
+Sends an animated emoji with a random value.
+
+```typescript
+await ctx.replyWithDice(emoji?: '🎲' | '🎯' | '🏀' | '⚽' | '🎳' | '🎰'): Promise<Message>
+```
+
+**Example:**
+
+```typescript
+bot.command('roll', (ctx) => {
+  ctx.replyWithDice('🎲') // Rolls a die
+})
+```
+
+### forwardMessage
+
+Forwards a message to another chat.
+
+```typescript
+await ctx.forwardMessage(chatId: number | string, other?: ForwardMessageOptions): Promise<Message>
+```
+
+### copyMessage
+
+Copies a message to another chat (without the forward header).
+
+```typescript
+await ctx.copyMessage(chatId: number | string, other?: CopyMessageOptions): Promise<MessageId>
+```
+
+### deleteMessage
+
+Deletes the current message.
+
+```typescript
+await ctx.deleteMessage(): Promise<true>
+```
+
+**Example:**
+
+```typescript
+bot.command('delete', async (ctx) => {
+  await ctx.reply('This message will be deleted in 3 seconds...')
+  await new Promise(resolve => setTimeout(resolve, 3000))
+  await ctx.deleteMessage()
+})
+```
+
+### answerCallbackQuery
+
+Answers a callback query from an inline button.
+
+```typescript
+await ctx.answerCallbackQuery(options?: AnswerCallbackQueryOptions): Promise<true>
+```
+
+**Example:**
+
+```typescript
+bot.callbackQuery('button_id', async (ctx) => {
+  await ctx.answerCallbackQuery('Button clicked!')
+  
+  // Or show an alert
+  await ctx.answerCallbackQuery({
+    text: 'This is an alert!',
+    show_alert: true
+  })
+})
+```
+
+### editMessageText
+
+Edits the text of a message.
+
+```typescript
+await ctx.editMessageText(text: string, other?: EditMessageTextOptions): Promise<Message | true>
+```
+
+**Example:**
+
+```typescript
+bot.callbackQuery('edit', async (ctx) => {
+  await ctx.editMessageText('Message text has been edited!')
+})
+```
+
+### editMessageReplyMarkup
+
+Edits the reply markup (keyboard) of a message.
+
+```typescript
+await ctx.editMessageReplyMarkup(replyMarkup?: InlineKeyboardMarkup): Promise<Message | true>
+```
+
+## Complete Example
+
+```typescript
+import { Bot } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Access update information
+bot.on('message', (ctx) => {
+  console.log('Update ID:', ctx.update.update_id)
+  console.log('Chat ID:', ctx.chatId)
+  console.log('User:', ctx.from?.first_name)
+  console.log('Message ID:', ctx.msgId)
+})
+
+// Use context probing
+bot.on('message', (ctx) => {
+  if (ctx.has(':text')) {
+    console.log('Text:', ctx.msg.text)
+  }
+  
+  if (ctx.hasChatType('private')) {
+    console.log('Private chat')
+  }
+})
+
+// Extract entities
+bot.on('message:entities', (ctx) => {
+  const urls = ctx.entities('url')
+  if (urls.length > 0) {
+    ctx.reply(`Found ${urls.length} URL(s)!`)
+  }
+})
+
+// Use API shortcuts
+bot.command('start', async (ctx) => {
+  await ctx.reply('Welcome!')
+  await ctx.replyWithPhoto('https://example.com/logo.png', {
+    caption: 'Our logo'
+  })
+})
+
+// Handle reactions
+bot.on('message_reaction', (ctx) => {
+  const r = ctx.reactions()
+  if (r.emojiAdded.includes('❤️')) {
+    console.log('User sent love!')
+  }
+})
+
+bot.start()
+```
+
+## See Also
+
+- [Bot](/api/bot) - The main Bot class
+- [API Client](/api/api-client) - Direct API method calls
+- [Middleware](https://grammy.dev/guide/middleware) - Understanding middleware
+- [Context Flavors](https://grammy.dev/guide/context#context-flavors) - Extending the context

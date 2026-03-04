@@ -1,0 +1,590 @@
+---
+title: 'Middleware'
+description: 'Understanding the middleware system that powers grammY'
+---
+
+Middleware is grammY's mechanism for processing updates. Think of middleware as a chain of functions that handle incoming updates from Telegram.
+
+## What is Middleware?
+
+In simple terms, **middleware is just a fancy word for a listener**. When you write:
+
+```typescript
+bot.on('message', ctx => ctx.reply('I got your message!'))
+//                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                This function is middleware!
+```
+
+The function you pass is middleware. It receives a [Context](/concepts/context) object and processes it.
+
+## The Middleware Signature
+
+Middleware functions have this signature:
+
+```typescript
+type MiddlewareFn<C extends Context> = (
+  ctx: C,
+  next: NextFunction
+) => MaybePromise<unknown>
+```
+
+<ParamField path="ctx" type="Context">
+  The context object containing the update and API methods
+</ParamField>
+
+<ParamField path="next" type="NextFunction">
+  A function that invokes the next middleware in the chain
+</ParamField>
+
+### Example Middleware
+
+```typescript
+bot.use(async (ctx, next) => {
+  console.log(`Update ${ctx.update.update_id} received`)
+  await next() // Call downstream middleware
+  console.log(`Update ${ctx.update.update_id} processed`)
+})
+```
+
+## The `next` Function
+
+The `next` function is crucial to understanding middleware. It:
+
+1. Passes control to the next middleware in the chain
+2. Returns a `Promise` that resolves when downstream middleware completes
+3. Allows you to run code both before and after downstream middleware
+
+```typescript
+bot.use(async (ctx, next) => {
+  // Runs BEFORE downstream middleware
+  console.log('Before')
+  
+  await next() // Pass control downstream
+  
+  // Runs AFTER downstream middleware
+  console.log('After')
+})
+
+bot.on('message', (ctx) => {
+  console.log('During')
+})
+
+// Output when a message arrives:
+// Before
+// During
+// After
+```
+
+<Warning>
+Always `await next()` if you call it! Forgetting to await can lead to unexpected behavior and unhandled promise rejections.
+</Warning>
+
+## Middleware Chain
+
+Middleware executes in the order it's registered:
+
+```typescript
+bot.use((ctx, next) => {
+  console.log(1)
+  return next()
+})
+
+bot.use((ctx, next) => {
+  console.log(2)
+  return next()
+})
+
+bot.use((ctx) => {
+  console.log(3)
+})
+
+// Output: 1, 2, 3
+```
+
+If middleware doesn't call `next()`, the chain stops:
+
+```typescript
+bot.use((ctx, next) => {
+  console.log(1)
+  // next() not called - chain stops here
+})
+
+bot.use((ctx) => {
+  console.log(2) // Never executes
+})
+
+// Output: 1
+```
+
+## Registering Middleware
+
+### `bot.use()` - Universal Middleware
+
+Runs for all updates:
+
+```typescript
+bot.use((ctx, next) => {
+  console.log('Received update type:', Object.keys(ctx.update)[1])
+  return next()
+})
+```
+
+### `bot.on()` - Filtered Middleware
+
+Runs only for specific update types:
+
+```typescript
+// Only for messages
+bot.on('message', (ctx) => {
+  console.log('Message text:', ctx.message.text)
+})
+
+// Only for text messages
+bot.on('message:text', (ctx) => {
+  console.log('Text:', ctx.message.text)
+})
+
+// Only for photos
+bot.on('message:photo', (ctx) => {
+  console.log('Photo count:', ctx.message.photo.length)
+})
+
+// Multiple filters (OR logic)
+bot.on(['message:text', 'message:photo'], (ctx) => {
+  console.log('Text or photo')
+})
+```
+
+See [Filter Queries](/concepts/filter-queries) for all available filters.
+
+### `bot.command()` - Command Middleware
+
+```typescript
+bot.command('start', (ctx) => {
+  ctx.reply('Welcome!')
+  // ctx.match contains text after the command
+  console.log('Payload:', ctx.match)
+})
+
+bot.command(['help', 'ayuda'], (ctx) => {
+  ctx.reply('Help message')
+})
+```
+
+### `bot.hears()` - Text Matching
+
+```typescript
+// Exact match
+bot.hears('hello', (ctx) => {
+  ctx.reply('Hi there!')
+})
+
+// Regex match
+bot.hears(/hello/i, (ctx) => {
+  ctx.reply('Hi there!')
+  console.log('Match:', ctx.match) // RegExpMatchArray
+})
+
+// Multiple triggers
+bot.hears(['hello', 'hi', /hey/i], (ctx) => {
+  ctx.reply('Greetings!')
+})
+```
+
+### `bot.callbackQuery()` - Callback Query Handling
+
+```typescript
+bot.callbackQuery('button-data', async (ctx) => {
+  await ctx.answerCallbackQuery('Button clicked!')
+  await ctx.editMessageText('Updated!')
+})
+
+bot.callbackQuery(/^btn-(.+)$/, (ctx) => {
+  const data = ctx.match[1] // Captured group
+  ctx.answerCallbackQuery(`You clicked ${data}`)
+})
+```
+
+### Other Specialized Methods
+
+```typescript
+// Specific chat types
+bot.chatType('private', (ctx) => {
+  console.log('Private chat message')
+})
+
+bot.chatType(['group', 'supergroup'], (ctx) => {
+  console.log('Group message')
+})
+
+// Inline queries
+bot.inlineQuery(/search (.+)/, (ctx) => {
+  const query = ctx.match[1]
+  // ... answer inline query
+})
+
+// Reactions
+bot.reaction('👍', (ctx) => {
+  ctx.reply('Thanks for the like!')
+})
+
+bot.reaction(['👍', '❤️'], (ctx) => {
+  ctx.reply('Thanks for the reaction!')
+})
+
+// Pre-checkout queries
+bot.preCheckoutQuery('invoice-payload', async (ctx) => {
+  await ctx.answerPreCheckoutQuery(true)
+})
+
+// Shipping queries
+bot.shippingQuery('invoice-payload', async (ctx) => {
+  await ctx.answerShippingQuery(true, shippingOptions)
+})
+```
+
+## The Composer Class
+
+The `Bot` class extends `Composer`, which provides all middleware registration methods. You can use `Composer` independently for modular code:
+
+```typescript
+import { Composer } from 'grammy'
+
+const privateChat = new Composer()
+
+privateChat.command('start', (ctx) => {
+  ctx.reply('Welcome to private chat!')
+})
+
+privateChat.on('message', (ctx) => {
+  // Handle private messages
+})
+
+// Install the composer
+bot.chatType('private').use(privateChat)
+```
+
+## Advanced Middleware Patterns
+
+### Conditional Execution with `filter()`
+
+Run middleware only when a custom condition is met:
+
+```typescript
+bot.filter(
+  (ctx) => ctx.from?.id === 123456789,
+  (ctx) => {
+    ctx.reply('Hello, admin!')
+  }
+)
+
+// With type predicate
+function hasText(ctx: Context): ctx is Context & { message: { text: string } } {
+  return ctx.message?.text !== undefined
+}
+
+bot.filter(hasText, (ctx) => {
+  // ctx.message.text is guaranteed to exist
+  const text: string = ctx.message.text
+})
+```
+
+### Excluding Updates with `drop()`
+
+Skip middleware for certain updates:
+
+```typescript
+// Process all messages except from bots
+bot.drop(
+  (ctx) => ctx.from?.is_bot === true,
+  (ctx) => {
+    // This won't run for bot messages
+  }
+)
+```
+
+### Branching with `branch()`
+
+Choose between two middleware paths:
+
+```typescript
+bot.branch(
+  (ctx) => ctx.from?.language_code === 'es',
+  // True branch - Spanish users
+  (ctx) => ctx.reply('¡Hola!'),
+  // False branch - Other users  
+  (ctx) => ctx.reply('Hello!')
+)
+```
+
+### Routing with `route()`
+
+Route to different handlers based on a value:
+
+```typescript
+const handlers = {
+  help: (ctx: Context) => ctx.reply('Help message'),
+  settings: (ctx: Context) => ctx.reply('Settings'),
+  about: (ctx: Context) => ctx.reply('About')
+}
+
+bot.on('callback_query:data', (ctx) => {
+  return ctx.route(
+    (ctx) => ctx.callbackQuery.data as keyof typeof handlers,
+    handlers,
+    (ctx) => ctx.reply('Unknown command') // Fallback
+  )
+})
+```
+
+### Lazy Middleware with `lazy()`
+
+Generate middleware dynamically per update:
+
+```typescript
+bot.lazy(async (ctx) => {
+  // Load user preferences from database
+  const lang = await getUserLanguage(ctx.from?.id)
+  
+  if (lang === 'es') {
+    return (ctx: Context) => ctx.reply('¡Hola!')
+  } else {
+    return (ctx: Context) => ctx.reply('Hello!')
+  }
+})
+```
+
+### Concurrent Middleware with `fork()`
+
+Run middleware concurrently to the main stack:
+
+```typescript
+bot.use((ctx, next) => {
+  console.log('1: before')
+  return next().then(() => console.log('1: after'))
+})
+
+bot.fork().use((ctx) => {
+  console.log('2: concurrent')
+})
+
+bot.use((ctx) => {
+  console.log('3: main stack')
+})
+
+// Output:
+// 1: before
+// 3: main stack  (fork runs concurrently)
+// 2: concurrent  (fork runs concurrently)
+// 1: after
+```
+
+## Error Boundaries
+
+Catch errors in specific middleware subtrees:
+
+```typescript
+const errorHandler = (err: BotError, next: NextFunction) => {
+  console.error('Caught error:', err.error)
+  return next() // Continue execution
+}
+
+const protected = bot.errorBoundary(errorHandler)
+
+protected.on('message', (ctx) => {
+  throw new Error('This error is caught')
+})
+
+bot.on('callback_query', (ctx) => {
+  throw new Error('This error reaches the global handler')
+})
+```
+
+See [Error Handling](/concepts/error-handling) for comprehensive error handling.
+
+## Middleware Objects
+
+Middleware can be packaged as objects:
+
+```typescript
+import { MiddlewareObj } from 'grammy'
+
+class LoggerMiddleware implements MiddlewareObj<Context> {
+  middleware() {
+    return async (ctx: Context, next: NextFunction) => {
+      console.log('Update:', ctx.update.update_id)
+      await next()
+    }
+  }
+}
+
+bot.use(new LoggerMiddleware())
+```
+
+This is how plugins work internally.
+
+## Middleware Composition
+
+You can chain middleware registration:
+
+```typescript
+bot
+  .on('message')
+  .filter((ctx) => ctx.message.text?.startsWith('/'))
+  .hears(/^\/echo (.+)/, (ctx) => {
+    ctx.reply(ctx.match[1])
+  })
+```
+
+Each method returns a new `Composer` instance:
+
+```typescript
+const onMessage = bot.on('message')
+const onText = onMessage.on(':text')
+const onCommand = onText.filter(ctx => ctx.message.text.startsWith('/'))
+
+onCommand.use((ctx) => {
+  console.log('Command:', ctx.message.text)
+})
+```
+
+## Running Middleware Manually
+
+Run middleware with the `run()` function:
+
+```typescript
+import { run } from 'grammy'
+
+const middleware: MiddlewareFn<Context> = (ctx, next) => {
+  console.log('Running middleware')
+  return next()
+}
+
+const ctx: Context = /* ... */
+await run(middleware, ctx)
+```
+
+## Best Practices
+
+<Tip>
+**Order Matters**
+
+Register middleware in order of specificity:
+```typescript
+// 1. General middleware (logging, session)
+bot.use(session())
+bot.use(logger)
+
+// 2. Specific handlers
+bot.command('start', ...)
+bot.on('message:text', ...)
+```
+</Tip>
+
+<Tip>
+**Always Call `next()` or Stop the Chain**
+
+Either call `next()` to continue, or handle the update completely:
+```typescript
+bot.use(async (ctx, next) => {
+  if (ctx.from?.is_bot) {
+    return // Stop here for bots
+  }
+  await next() // Continue for users
+})
+```
+</Tip>
+
+<Warning>
+**Don't Register Middleware Inside Middleware**
+
+This creates a memory leak:
+```typescript
+// BAD - Don't do this!
+bot.on('message', (ctx) => {
+  bot.on('callback_query', ...) // Registered on every message!
+})
+
+// GOOD - Register at the top level
+bot.on('callback_query', ...)
+```
+
+grammY will throw an error if you try this after calling `bot.start()`.
+</Warning>
+
+<Tip>
+**Use Composer for Modular Code**
+
+```typescript
+// commands.ts
+export const commands = new Composer<MyContext>()
+commands.command('start', ...)
+commands.command('help', ...)
+
+// main.ts
+import { commands } from './commands'
+bot.use(commands)
+```
+</Tip>
+
+## Middleware Flow Diagram
+
+```
+Update arrives
+    |
+    v
+[Middleware 1] ──> await next()
+    |                    |
+    v                    |
+[Middleware 2] ──> await next()
+    |                    |         
+    v                    |
+[Middleware 3]           |
+    |                    |
+    └────────────────────┘
+         (resolves)
+```
+
+## Type Safety
+
+Middleware is fully typed:
+
+```typescript
+import { Context, Middleware } from 'grammy'
+
+// Middleware function type
+const mw: Middleware<Context> = (ctx, next) => {
+  // ...
+}
+
+// Specialized middleware types
+import {
+  CommandMiddleware,
+  HearsMiddleware,
+  CallbackQueryMiddleware
+} from 'grammy'
+
+const cmdHandler: CommandMiddleware<Context> = (ctx) => {
+  ctx.match // string (text after command)
+}
+
+const hearsHandler: HearsMiddleware<Context> = (ctx) => {
+  ctx.match // string | RegExpMatchArray
+}
+```
+
+With filter queries:
+
+```typescript
+bot.on('message:text', (ctx) => {
+  // ctx.message.text is guaranteed to be string
+  const text: string = ctx.message.text
+})
+```
+
+## Related
+
+- [Context](/concepts/context) - Understanding context objects
+- [Filter Queries](/concepts/filter-queries) - Filtering updates
+- [Error Handling](/concepts/error-handling) - Handling errors in middleware
+- [Bot](/concepts/bot) - The Bot class

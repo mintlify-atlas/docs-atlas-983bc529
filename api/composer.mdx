@@ -1,0 +1,665 @@
+---
+title: Composer
+description: The middleware composition system in grammY
+icon: layer-group
+---
+
+The `Composer` class is the heart of grammY's middleware system. It provides methods for composing and organizing middleware into a middleware stack. The `Bot` class extends `Composer`, so all methods are available on your bot instance.
+
+## Overview
+
+A composer allows you to:
+- Register middleware that processes updates
+- Filter updates based on various criteria
+- Organize middleware into reusable components
+- Control the flow of update processing
+
+## Constructor
+
+```typescript
+new Composer(...middleware: Middleware<C>[])
+```
+
+<ParamField path="middleware" type="Middleware<C>[]">
+  Optional middleware functions to initialize the composer with. If no middleware is provided, the composer will pass all updates through unchanged.
+</ParamField>
+
+**Example:**
+
+```typescript
+import { Composer } from 'grammy'
+
+// Empty composer
+const composer = new Composer()
+
+// With initial middleware
+const composer = new Composer(
+  (ctx, next) => {
+    console.log('First middleware')
+    return next()
+  },
+  (ctx, next) => {
+    console.log('Second middleware')
+    return next()
+  }
+)
+```
+
+## Basic Methods
+
+### use
+
+Registers middleware that receives all updates.
+
+```typescript
+composer.use(...middleware: Middleware<C>[]): Composer<C>
+```
+
+<ParamField path="middleware" type="Middleware<C>[]" required>
+  The middleware function(s) to register
+</ParamField>
+
+<ResponseField name="return" type="Composer<C>">
+  A new composer instance that can be further extended
+</ResponseField>
+
+**Example:**
+
+```typescript
+composer.use((ctx, next) => {
+  console.log('Processing update:', ctx.update.update_id)
+  return next()
+})
+
+// Chain multiple use calls
+composer
+  .use(middleware1)
+  .use(middleware2)
+  .use(middleware3)
+```
+
+### on
+
+Registers middleware for specific update types using filter queries.
+
+```typescript
+composer.on<Q extends FilterQuery>(
+  filter: Q | Q[],
+  ...middleware: Middleware<Filter<C, Q>>[]
+): Composer<Filter<C, Q>>
+```
+
+<ParamField path="filter" type="FilterQuery | FilterQuery[]" required>
+  The filter query or array of queries to match
+</ParamField>
+
+<ParamField path="middleware" type="Middleware<Filter<C, Q>>[]" required>
+  Middleware to execute when the filter matches
+</ParamField>
+
+**Example:**
+
+```typescript
+// Single filter
+composer.on('message:text', (ctx) => {
+  console.log('Text message:', ctx.message.text)
+})
+
+// Multiple filters (OR logic)
+composer.on(['message:photo', 'message:video'], (ctx) => {
+  console.log('Media received')
+})
+
+// Chaining filters (AND logic)
+composer
+  .on('::url')           // Has URL entity
+  .on(':forward_origin') // Is forwarded
+  .use((ctx) => {
+    console.log('Forwarded message with URL')
+  })
+```
+
+### hears
+
+Registers middleware for messages matching text or regular expressions.
+
+```typescript
+composer.hears(
+  trigger: string | RegExp | Array<string | RegExp>,
+  ...middleware: HearsMiddleware<C>[]
+): Composer<HearsContext<C>>
+```
+
+<ParamField path="trigger" type="string | RegExp | Array<string | RegExp>" required>
+  The text or regex to match against message text or captions
+</ParamField>
+
+**Example:**
+
+```typescript
+// Exact match
+composer.hears('hello', (ctx) => {
+  ctx.reply('Hello to you too!')
+})
+
+// Regex match
+composer.hears(/\/echo (.+)/, (ctx) => {
+  const text = ctx.match[1]
+  ctx.reply(text)
+})
+
+// Multiple triggers
+composer.hears(['hi', 'hey', 'hello'], (ctx) => {
+  ctx.reply('Greetings!')
+})
+```
+
+### command
+
+Registers middleware for specific bot commands.
+
+```typescript
+composer.command(
+  command: string | string[],
+  ...middleware: CommandMiddleware<C>[]
+): Composer<CommandContext<C>>
+```
+
+<ParamField path="command" type="string | string[]" required>
+  The command(s) to match (without the leading `/`)
+</ParamField>
+
+**Example:**
+
+```typescript
+composer.command('start', (ctx) => {
+  ctx.reply('Welcome!')
+  console.log('Start payload:', ctx.match)
+})
+
+composer.command(['help', 'info'], (ctx) => {
+  ctx.reply('Help information...')
+})
+```
+
+### reaction
+
+Registers middleware for message reaction updates.
+
+```typescript
+composer.reaction(
+  reaction: ReactionType | ReactionType[],
+  ...middleware: ReactionMiddleware<C>[]
+): Composer<ReactionContext<C>>
+```
+
+<ParamField path="reaction" type="ReactionTypeEmoji['emoji'] | ReactionType | Array" required>
+  The reaction emoji or type to match
+</ParamField>
+
+**Example:**
+
+```typescript
+composer.reaction('👍', (ctx) => {
+  console.log('Thumbs up received!')
+})
+
+composer.reaction(['❤️', '🔥'], (ctx) => {
+  console.log('Popular reaction!')
+})
+```
+
+### chatType
+
+Registers middleware for specific chat types.
+
+```typescript
+composer.chatType<T extends Chat['type']>(
+  chatType: T | T[],
+  ...middleware: Middleware<ChatTypeContext<C, T>>[]
+): Composer<ChatTypeContext<C, T>>
+```
+
+<ParamField path="chatType" type="'private' | 'group' | 'supergroup' | 'channel' | Array" required>
+  The chat type(s) to match
+</ParamField>
+
+**Example:**
+
+```typescript
+// Private chats only
+composer.chatType('private', (ctx) => {
+  console.log('Private message')
+})
+
+// Groups and supergroups
+composer.chatType(['group', 'supergroup'], (ctx) => {
+  console.log('Group message')
+})
+```
+
+### callbackQuery
+
+Registers middleware for callback queries.
+
+```typescript
+composer.callbackQuery(
+  trigger: string | RegExp | Array<string | RegExp>,
+  ...middleware: CallbackQueryMiddleware<C>[]
+): Composer<CallbackQueryContext<C>>
+```
+
+**Example:**
+
+```typescript
+composer.callbackQuery('btn_confirm', async (ctx) => {
+  await ctx.answerCallbackQuery('Confirmed!')
+  await ctx.editMessageText('You confirmed the action.')
+})
+
+composer.callbackQuery(/^page_(\d+)$/, async (ctx) => {
+  const page = ctx.match[1]
+  await ctx.editMessageText(`Showing page ${page}`)
+})
+```
+
+### inlineQuery
+
+Registers middleware for inline queries.
+
+```typescript
+composer.inlineQuery(
+  trigger: string | RegExp | Array<string | RegExp>,
+  ...middleware: InlineQueryMiddleware<C>[]
+): Composer<InlineQueryContext<C>>
+```
+
+**Example:**
+
+```typescript
+composer.inlineQuery('search', async (ctx) => {
+  const results = [/* ... */]
+  await ctx.answerInlineQuery(results)
+})
+```
+
+## Advanced Methods
+
+### filter
+
+Registers middleware behind a custom filter function.
+
+```typescript
+// With type predicate
+composer.filter<D extends C>(
+  predicate: (ctx: C) => ctx is D,
+  ...middleware: Middleware<D>[]
+): Composer<D>
+
+// With boolean predicate
+composer.filter(
+  predicate: (ctx: C) => boolean | Promise<boolean>,
+  ...middleware: Middleware<C>[]
+): Composer<C>
+```
+
+<ParamField path="predicate" type="(ctx: C) => boolean | Promise<boolean>" required>
+  Function that determines whether to execute the middleware
+</ParamField>
+
+**Example:**
+
+```typescript
+// Simple filter
+composer.filter(
+  (ctx) => ctx.from?.is_premium === true,
+  (ctx) => {
+    console.log('Premium user!')
+  }
+)
+
+// Type predicate
+function hasText(ctx): ctx is Context & { message: { text: string } } {
+  return ctx.message?.text !== undefined
+}
+
+composer.filter(hasText, (ctx) => {
+  // ctx.message.text is guaranteed to exist
+  console.log(ctx.message.text)
+})
+```
+
+### drop
+
+Registers middleware that runs only if the predicate returns `false`.
+
+```typescript
+composer.drop(
+  predicate: (ctx: C) => boolean | Promise<boolean>,
+  ...middleware: Middleware<C>[]
+): Composer<C>
+```
+
+**Example:**
+
+```typescript
+// Skip bot messages
+composer.drop(
+  (ctx) => ctx.from?.is_bot === true,
+  (ctx) => {
+    console.log('Human user message')
+  }
+)
+```
+
+### fork
+
+Runs middleware concurrently with the main middleware stack.
+
+```typescript
+composer.fork(...middleware: Middleware<C>[]): Composer<C>
+```
+
+**Example:**
+
+```typescript
+bot.use((ctx, next) => {
+  console.log('First middleware')
+  return next()
+})
+
+bot.fork((ctx) => {
+  // Runs concurrently with next middleware
+  console.log('Forked middleware')
+})
+
+bot.use((ctx) => {
+  console.log('This runs in parallel with fork')
+})
+```
+
+### lazy
+
+Executes dynamically generated middleware.
+
+```typescript
+composer.lazy(
+  middlewareFactory: (ctx: C) => Middleware<C> | Middleware<C>[] | Promise<Middleware<C> | Middleware<C>[]>
+): Composer<C>
+```
+
+<ParamField path="middlewareFactory" type="(ctx: C) => Middleware<C> | Middleware<C>[]" required>
+  Factory function that creates middleware for each context. Can be async. Return an empty array to skip middleware.
+</ParamField>
+
+**Example:**
+
+```typescript
+composer.lazy((ctx) => {
+  // Generate middleware based on context
+  if (ctx.from?.language_code === 'en') {
+    return (ctx) => ctx.reply('Hello!')
+  } else {
+    return (ctx) => ctx.reply('Hola!')
+  }
+})
+
+// Return multiple middleware
+composer.lazy(async (ctx) => {
+  const handlers = await loadHandlersFromDatabase()
+  return handlers
+})
+```
+
+### route
+
+Branches between different middleware based on a routing function.
+
+```typescript
+composer.route<R extends Record<PropertyKey, Middleware<C>>>(
+  router: (ctx: C) => keyof R | undefined | Promise<keyof R | undefined>,
+  routeHandlers: R,
+  fallback?: Middleware<C>
+): Composer<C>
+```
+
+<ParamField path="router" type="(ctx: C) => keyof R | undefined" required>
+  Function that returns the key of the middleware to execute
+</ParamField>
+
+<ParamField path="routeHandlers" type="Record<string, Middleware<C>>" required>
+  Object mapping route keys to middleware
+</ParamField>
+
+<ParamField path="fallback" type="Middleware<C>">
+  Optional fallback middleware if no route matches
+</ParamField>
+
+**Example:**
+
+```typescript
+const routes = {
+  text: (ctx) => console.log('Text:', ctx.msg.text),
+  photo: (ctx) => console.log('Photo received'),
+  video: (ctx) => console.log('Video received')
+}
+
+composer.route(
+  (ctx) => {
+    if (ctx.msg?.text) return 'text'
+    if (ctx.msg?.photo) return 'photo'
+    if (ctx.msg?.video) return 'video'
+    return undefined
+  },
+  routes,
+  (ctx) => console.log('Unknown message type')
+)
+```
+
+### branch
+
+Branches between two middleware paths based on a predicate.
+
+```typescript
+composer.branch(
+  predicate: (ctx: C) => boolean | Promise<boolean>,
+  trueMiddleware: Middleware<C> | Middleware<C>[],
+  falseMiddleware: Middleware<C> | Middleware<C>[]
+): Composer<C>
+```
+
+<ParamField path="predicate" type="(ctx: C) => boolean | Promise<boolean>" required>
+  Condition to test
+</ParamField>
+
+<ParamField path="trueMiddleware" type="Middleware<C> | Middleware<C>[]" required>
+  Middleware to run if predicate returns `true`
+</ParamField>
+
+<ParamField path="falseMiddleware" type="Middleware<C> | Middleware<C>[]" required>
+  Middleware to run if predicate returns `false`
+</ParamField>
+
+**Example:**
+
+```typescript
+composer.branch(
+  (ctx) => ctx.from?.is_premium === true,
+  (ctx) => ctx.reply('Welcome, premium user!'),
+  (ctx) => ctx.reply('Welcome, regular user!')
+)
+```
+
+### errorBoundary
+
+Installs an error boundary to catch errors in middleware.
+
+```typescript
+composer.errorBoundary(
+  errorHandler: (error: BotError<C>, next: NextFunction) => unknown | Promise<unknown>,
+  ...middleware: Middleware<C>[]
+): Composer<C>
+```
+
+<ParamField path="errorHandler" type="(error: BotError<C>, next: NextFunction) => unknown" required>
+  Function to handle errors. Call `next()` to continue to downstream middleware after handling the error.
+</ParamField>
+
+<ParamField path="middleware" type="Middleware<C>[]" required>
+  Middleware to protect with the error boundary
+</ParamField>
+
+**Example:**
+
+```typescript
+function errorHandler(err: BotError, next: NextFunction) {
+  console.error('Error caught:', err.error)
+  // Optionally continue processing
+  return next()
+}
+
+const protected = composer.errorBoundary(
+  errorHandler,
+  middleware1,
+  middleware2
+)
+
+protected.on('message', middleware3) // Also protected
+```
+
+## Helper Methods
+
+### gameQuery
+
+Registers middleware for game queries.
+
+```typescript
+composer.gameQuery(
+  trigger: string | RegExp | Array<string | RegExp>,
+  ...middleware: GameQueryMiddleware<C>[]
+): Composer<GameQueryContext<C>>
+```
+
+### chosenInlineResult
+
+Registers middleware for chosen inline results.
+
+```typescript
+composer.chosenInlineResult(
+  resultId: string | RegExp | Array<string | RegExp>,
+  ...middleware: ChosenInlineResultMiddleware<C>[]
+): Composer<ChosenInlineResultContext<C>>
+```
+
+### preCheckoutQuery
+
+Registers middleware for pre-checkout queries.
+
+```typescript
+composer.preCheckoutQuery(
+  trigger: string | RegExp | Array<string | RegExp>,
+  ...middleware: PreCheckoutQueryMiddleware<C>[]
+): Composer<PreCheckoutQueryContext<C>>
+```
+
+### shippingQuery
+
+Registers middleware for shipping queries.
+
+```typescript
+composer.shippingQuery(
+  trigger: string | RegExp | Array<string | RegExp>,
+  ...middleware: ShippingQueryMiddleware<C>[]
+): Composer<ShippingQueryContext<C>>
+```
+
+## Middleware Function
+
+Get the composed middleware function.
+
+```typescript
+composer.middleware(): MiddlewareFn<C>
+```
+
+<ResponseField name="return" type="MiddlewareFn<C>">
+  The composed middleware function
+</ResponseField>
+
+**Example:**
+
+```typescript
+const composer = new Composer()
+composer.use((ctx) => console.log('Hello'))
+
+const middleware = composer.middleware()
+bot.use(middleware) // Install on bot
+```
+
+## Complete Example
+
+```typescript
+import { Bot, Composer } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Create a composer for admin commands
+const adminComposer = new Composer()
+
+adminComposer.filter(
+  (ctx) => ctx.from?.id === ADMIN_ID,
+  (ctx, next) => {
+    console.log('Admin command')
+    return next()
+  }
+)
+
+adminComposer.command('stats', (ctx) => {
+  ctx.reply('Statistics...')
+})
+
+adminComposer.command('ban', (ctx) => {
+  // Ban logic
+})
+
+// Install admin composer on the bot
+bot.use(adminComposer)
+
+// Create a composer for handling different message types
+const messageComposer = new Composer()
+
+messageComposer.route(
+  (ctx) => {
+    if (ctx.msg?.text) return 'text'
+    if (ctx.msg?.photo) return 'photo'
+    if (ctx.msg?.document) return 'document'
+  },
+  {
+    text: (ctx) => console.log('Text message'),
+    photo: (ctx) => console.log('Photo'),
+    document: (ctx) => console.log('Document')
+  },
+  (ctx) => console.log('Other message type')
+)
+
+bot.on('message', messageComposer)
+
+// Error boundary example
+const safeComposer = bot.errorBoundary(
+  (err) => {
+    console.error('Error:', err.error.message)
+  },
+  (ctx) => {
+    // This might throw an error
+    throw new Error('Oops!')
+  }
+)
+
+bot.start()
+```
+
+## See Also
+
+- [Bot](/api/bot) - The main Bot class that extends Composer
+- [Context](/api/context) - The context object passed to middleware
+- [Middleware](https://grammy.dev/guide/middleware) - Understanding middleware in grammY
+- [Filter Queries](https://grammy.dev/guide/filter-queries) - Filter query syntax reference

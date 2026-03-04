@@ -1,0 +1,547 @@
+---
+title: Bot
+description: The main class representing your Telegram bot in grammY
+icon: robot
+---
+
+The `Bot` class is the single most important class in grammY. It represents your bot and provides methods for handling updates, registering middleware, and managing the bot's lifecycle.
+
+## Constructor
+
+Creates a new Bot instance with the given token.
+
+```typescript
+const bot = new Bot(token, config?)
+```
+
+<ParamField path="token" type="string" required>
+  The bot's token as acquired from [@BotFather](https://t.me/BotFather)
+</ParamField>
+
+<ParamField path="config" type="BotConfig<C>">
+  Optional configuration properties for the bot
+  
+  <Expandable title="BotConfig properties">
+    <ParamField path="client" type="ApiClientOptions">
+      Advanced options for the grammY client that connects to the Telegram Bot API server
+    </ParamField>
+    
+    <ParamField path="botInfo" type="UserFromGetMe">
+      Pre-initialize the bot with cached bot information to skip the initial `getMe` call. Useful for serverless environments where the bot restarts frequently.
+    </ParamField>
+    
+    <ParamField path="ContextConstructor" type="Constructor<Context>">
+      Custom context constructor for creating context objects for each update
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example
+
+```typescript
+import { Bot } from 'grammy'
+
+// Simple usage
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// With configuration
+const bot = new Bot('YOUR_BOT_TOKEN', {
+  client: {
+    apiRoot: 'https://api.telegram.org'
+  },
+  botInfo: cachedBotInfo // Skip getMe call
+})
+```
+
+## Properties
+
+<ResponseField name="token" type="string">
+  The bot's authentication token (read-only)
+</ResponseField>
+
+<ResponseField name="api" type="Api">
+  Full access to the Telegram Bot API. Use this to call any Bot API method.
+  
+  ```typescript
+  bot.api.sendMessage(chatId, 'Hello!')
+  ```
+  
+  **Note:** Prefer using `ctx.api` inside middleware when you have access to the context object.
+</ResponseField>
+
+<ResponseField name="botInfo" type="UserFromGetMe">
+  Information about the bot itself as retrieved from `api.getMe()`. Only available after the bot has been initialized via `await bot.init()`, or after a manual value has been set.
+  
+  Starting the bot will always perform initialization automatically unless a manual value is already set.
+</ResponseField>
+
+<ResponseField name="errorHandler" type="ErrorHandler<C>">
+  The bot's error handler that is invoked whenever middleware throws an error. Set your own error handler via `bot.catch`.
+</ResponseField>
+
+## Middleware Methods
+
+### use
+
+Registers middleware that receives all updates.
+
+```typescript
+bot.use(middleware: Middleware<C>): Composer<C>
+```
+
+<ParamField path="middleware" type="Middleware<C>" required>
+  The middleware function(s) to register. Often used to install plugins like session middleware.
+</ParamField>
+
+**Example:**
+
+```typescript
+bot.use(session())
+bot.use((ctx, next) => {
+  console.log('Update received:', ctx.update.update_id)
+  return next()
+})
+```
+
+### on
+
+Registers middleware for specific update types using filter queries.
+
+```typescript
+bot.on(filter: FilterQuery | FilterQuery[], ...middleware: Middleware[]): Composer
+```
+
+<ParamField path="filter" type="FilterQuery | FilterQuery[]" required>
+  The filter query (or array of queries) to match. Examples:
+  - `'message'` - All message updates
+  - `'message:text'` - Only text messages  
+  - `'message:entities:url'` - Messages with URL entities
+  - `':text'` - Text messages and channel posts
+  - `['message:text', 'edited_message:text']` - Multiple filters (OR)
+</ParamField>
+
+<ParamField path="middleware" type="Middleware<Filter<C, Q>>[]" required>
+  Middleware function(s) to execute when the filter matches
+</ParamField>
+
+**Example:**
+
+```typescript
+// Listen for text messages
+bot.on('message:text', (ctx) => {
+  console.log('Text:', ctx.message.text)
+})
+
+// Listen for photos
+bot.on('message:photo', (ctx) => {
+  console.log('Photo received')
+})
+
+// Multiple filters
+bot.on(['message:text', 'message:photo'], (ctx) => {
+  ctx.reply('Got text or photo!')
+})
+```
+
+### command
+
+Registers middleware for specific bot commands.
+
+```typescript
+bot.command(command: string | string[], ...middleware: Middleware[]): Composer
+```
+
+<ParamField path="command" type="string | string[]" required>
+  The command(s) to match (without the leading `/`)
+</ParamField>
+
+<ParamField path="middleware" type="CommandMiddleware<C>[]" required>
+  Middleware to execute when the command is found. The command arguments are available via `ctx.match`.
+</ParamField>
+
+**Example:**
+
+```typescript
+bot.command('start', (ctx) => {
+  ctx.reply('Welcome! Use /help to see available commands.')
+  // Deep linking payload available in ctx.match
+})
+
+bot.command('help', (ctx) => {
+  ctx.reply('Available commands: /start, /help')
+})
+```
+
+### hears
+
+Registers middleware for messages matching text or regular expressions.
+
+```typescript
+bot.hears(trigger: string | RegExp | Array<string | RegExp>, ...middleware: Middleware[]): Composer
+```
+
+<ParamField path="trigger" type="string | RegExp | Array<string | RegExp>" required>
+  The text or regex pattern to match against message text or captions
+</ParamField>
+
+<ParamField path="middleware" type="HearsMiddleware<C>[]" required>
+  Middleware to execute on match. For regex triggers, `ctx.match` contains the `RegExpMatchArray`.
+</ParamField>
+
+**Example:**
+
+```typescript
+// Exact text match
+bot.hears('hello', (ctx) => {
+  ctx.reply('Hello to you too!')
+})
+
+// Regex match
+bot.hears(/\/echo (.+)/, (ctx) => {
+  const text = ctx.match[1] // Text after /echo
+  ctx.reply(text)
+})
+```
+
+### reaction
+
+Registers middleware for message reaction updates.
+
+```typescript
+bot.reaction(reaction: ReactionType | ReactionType[], ...middleware: Middleware[]): Composer
+```
+
+<ParamField path="reaction" type="ReactionTypeEmoji['emoji'] | ReactionType | Array" required>
+  The reaction emoji or reaction type to match
+</ParamField>
+
+**Note:** You must enable `message_reaction` updates in `allowed_updates` for your bot to receive reaction updates.
+
+**Example:**
+
+```typescript
+bot.reaction('👍', (ctx) => {
+  console.log('User gave thumbs up!')
+})
+
+bot.reaction(['👍', '👎'], (ctx) => {
+  console.log('User reacted with thumbs up or down')
+})
+```
+
+### callbackQuery
+
+Registers middleware for callback queries (inline button presses).
+
+```typescript
+bot.callbackQuery(trigger: string | RegExp | Array<string | RegExp>, ...middleware: Middleware[]): Composer
+```
+
+<ParamField path="trigger" type="string | RegExp | Array<string | RegExp>" required>
+  The callback data to match
+</ParamField>
+
+**Example:**
+
+```typescript
+bot.callbackQuery('button-payload', async (ctx) => {
+  await ctx.answerCallbackQuery('Button clicked!')
+  await ctx.editMessageText('You clicked the button')
+})
+```
+
+### chatType
+
+Registers middleware for specific chat types.
+
+```typescript
+bot.chatType(chatType: Chat['type'] | Chat['type'][], ...middleware: Middleware[]): Composer
+```
+
+<ParamField path="chatType" type="'private' | 'group' | 'supergroup' | 'channel' | Array" required>
+  The chat type(s) to match
+</ParamField>
+
+**Example:**
+
+```typescript
+// Only private chats
+bot.chatType('private').command('start', (ctx) => {
+  ctx.reply('Welcome to the private chat!')
+})
+
+// Groups and supergroups
+bot.chatType(['group', 'supergroup'], (ctx) => {
+  console.log('Group message')
+})
+```
+
+## Running the Bot
+
+### start
+
+Starts the bot using long polling.
+
+```typescript
+await bot.start(options?: PollingOptions): Promise<void>
+```
+
+<ParamField path="options" type="PollingOptions">
+  Options for configuring long polling
+  
+  <Expandable title="PollingOptions properties">
+    <ParamField path="limit" type="number">
+      Limits the number of updates retrieved per `getUpdates` call (1-100). Defaults to 100.
+    </ParamField>
+    
+    <ParamField path="timeout" type="number">
+      Timeout in seconds for long polling. Defaults to 30.
+    </ParamField>
+    
+    <ParamField path="allowed_updates" type="string[]">
+      List of update types to receive. Specify an empty array to receive all update types except `chat_member`, `message_reaction`, and `message_reaction_count`.
+    </ParamField>
+    
+    <ParamField path="drop_pending_updates" type="boolean">
+      Pass `true` to drop all pending updates before starting long polling.
+    </ParamField>
+    
+    <ParamField path="onStart" type="(botInfo: UserFromGetMe) => void | Promise<void>">
+      Callback executed after setup completes and before fetching updates. Receives `bot.botInfo` as an argument.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Important Notes:**
+- The returned Promise will never resolve except if your bot is stopped
+- You don't need to `await` the call to `bot.start`, but remember to catch potential errors via `bot.catch`
+- This uses simple long polling suitable for small to medium bots
+- For high-load bots (>5K messages/hour) or bots with long-running operations, use `@grammyjs/runner` instead
+
+**Example:**
+
+```typescript
+import { Bot } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', (ctx) => ctx.reply('Hello!'))
+
+// Start with default options
+bot.start()
+
+// Start with custom options
+bot.start({
+  allowed_updates: ['message', 'callback_query'],
+  drop_pending_updates: true,
+  onStart: (botInfo) => {
+    console.log(`Bot @${botInfo.username} started!`)
+  }
+})
+```
+
+### stop
+
+Stops the bot from long polling.
+
+```typescript
+await bot.stop(): Promise<void>
+```
+
+All middleware currently executing may complete, but no further `getUpdates` calls will be performed. The current `getUpdates` request will be cancelled.
+
+This method also confirms the last received update to the Telegram servers by calling `getUpdates` one last time with the latest offset value.
+
+**Example:**
+
+```typescript
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Stopping bot...')
+  await bot.stop()
+  console.log('Bot stopped')
+  process.exit(0)
+})
+```
+
+### init
+
+Initializes the bot by fetching bot information.
+
+```typescript
+await bot.init(signal?: AbortSignal): Promise<void>
+```
+
+<ParamField path="signal" type="AbortSignal">
+  Optional `AbortSignal` to cancel the initialization
+</ParamField>
+
+This method is called automatically when starting the bot. You usually don't need to call it manually unless you want to access `bot.botInfo` before starting.
+
+**Example:**
+
+```typescript
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Initialize to access bot info
+await bot.init()
+console.log(`Bot username: @${bot.botInfo.username}`)
+```
+
+## Utility Methods
+
+### catch
+
+Sets the bot's error handler for long polling.
+
+```typescript
+bot.catch(errorHandler: ErrorHandler<C>): void
+```
+
+<ParamField path="errorHandler" type="(error: BotError<C>) => unknown" required>
+  Function that handles middleware errors. Receives a `BotError` object containing both the error and the context.
+</ParamField>
+
+**Example:**
+
+```typescript
+bot.catch((err) => {
+  const ctx = err.ctx
+  console.error(`Error while handling update ${ctx.update.update_id}:`)
+  const e = err.error
+  if (e instanceof GrammyError) {
+    console.error('Error in request:', e.description)
+  } else if (e instanceof HttpError) {
+    console.error('Could not contact Telegram:', e)
+  } else {
+    console.error('Unknown error:', e)
+  }
+})
+```
+
+### handleUpdate
+
+Processes a single update object. This is an internal method used by grammY.
+
+```typescript
+await bot.handleUpdate(update: Update, webhookReplyEnvelope?: WebhookReplyEnvelope): Promise<void>
+```
+
+<ParamField path="update" type="Update" required>
+  An update from the Telegram Bot API
+</ParamField>
+
+<ParamField path="webhookReplyEnvelope" type="WebhookReplyEnvelope">
+  Optional webhook reply envelope for responding to webhook requests
+</ParamField>
+
+You typically only use this method when:
+- Writing a library on top of grammY
+- Running the bot on webhooks
+- Implementing custom update handling logic
+
+### isInited
+
+Checks if the bot has been initialized.
+
+```typescript
+bot.isInited(): boolean
+```
+
+<ResponseField name="return" type="boolean">
+  `true` if bot information is set, `false` otherwise
+</ResponseField>
+
+### isRunning
+
+Checks if the bot is currently running via built-in long polling.
+
+```typescript
+bot.isRunning(): boolean
+```
+
+<ResponseField name="return" type="boolean">
+  `true` if the bot is running, `false` otherwise
+</ResponseField>
+
+**Note:** This only applies to `bot.start()`. It doesn't reflect webhook server status or grammY runner status.
+
+## Advanced Methods
+
+The `Bot` class inherits all methods from [`Composer`](/api/composer), including:
+
+- `filter()` - Filter updates with custom predicates
+- `drop()` - Inverse filtering
+- `fork()` - Run middleware concurrently  
+- `lazy()` - Generate middleware dynamically
+- `route()` - Branch between different middleware
+- `branch()` - Conditional branching
+- `errorBoundary()` - Install error boundaries
+
+See the [Composer API reference](/api/composer) for details.
+
+## Complete Example
+
+```typescript
+import { Bot, GrammyError, HttpError } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Middleware
+bot.use(async (ctx, next) => {
+  console.log(`Update ${ctx.update.update_id} received`)
+  await next()
+})
+
+// Commands
+bot.command('start', (ctx) => {
+  ctx.reply('Welcome! I am your bot.')
+})
+
+bot.command('help', (ctx) => {
+  ctx.reply('Send me any message and I will echo it back!')
+})
+
+// Message handlers
+bot.on('message:text', (ctx) => {
+  ctx.reply(`You said: ${ctx.message.text}`)
+})
+
+bot.on('message:photo', (ctx) => {
+  ctx.reply('Nice photo!')
+})
+
+// Callback queries
+bot.callbackQuery('button_1', async (ctx) => {
+  await ctx.answerCallbackQuery('Button 1 clicked!')
+  await ctx.editMessageText('You clicked button 1')
+})
+
+// Error handling
+bot.catch((err) => {
+  const ctx = err.ctx
+  console.error(`Error while handling update ${ctx.update.update_id}:`)
+  const e = err.error
+  if (e instanceof GrammyError) {
+    console.error('Error in request:', e.description)
+  } else if (e instanceof HttpError) {
+    console.error('Could not contact Telegram:', e)
+  } else {
+    console.error('Unknown error:', e)
+  }
+})
+
+// Start the bot
+bot.start({
+  onStart: (botInfo) => {
+    console.log(`Bot @${botInfo.username} is running!`)
+  }
+})
+```
+
+## See Also
+
+- [Context](/api/context) - The context object passed to middleware
+- [Composer](/api/composer) - Base class for composing middleware
+- [API Client](/api/api-client) - Making direct API calls
+- [Filter Queries](https://grammy.dev/guide/filter-queries) - Documentation on filter query syntax

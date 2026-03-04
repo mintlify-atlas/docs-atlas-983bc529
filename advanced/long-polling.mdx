@@ -1,0 +1,383 @@
+---
+title: Long Polling
+description: Receive bot updates using long polling for development and simple deployments
+icon: arrows-rotate
+---
+
+# Long Polling
+
+Long polling is the simplest way to receive updates from Telegram. Your bot repeatedly asks Telegram's servers for new updates, waiting for up to 30 seconds for new data to arrive.
+
+## Basic Usage
+
+The easiest way to start receiving updates:
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message:text", (ctx) => ctx.reply("Got it!"));
+
+// Start long polling
+bot.start();
+```
+
+That's it! The bot will now receive and process all updates.
+
+## Configuration Options
+
+```typescript
+bot.start({
+  // Limit the number of updates per request (1-100)
+  limit: 100,
+
+  // Timeout in seconds for long polling (default: 30)
+  timeout: 30,
+
+  // Specify which update types to receive
+  allowed_updates: [
+    "message",
+    "edited_message",
+    "callback_query",
+  ],
+
+  // Drop all pending updates before starting
+  drop_pending_updates: true,
+
+  // Callback function run after bot is ready
+  onStart: (botInfo) => {
+    console.log(`Bot ${botInfo.username} started!`);
+  },
+});
+```
+
+## Stopping the Bot
+
+```typescript
+// Stop gracefully (waits for current updates to finish)
+await bot.stop();
+
+// Check if bot is running
+if (bot.isRunning()) {
+  console.log("Bot is running");
+}
+```
+
+## Handling Signals
+
+Gracefully shut down on process termination:
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message", (ctx) => ctx.reply("Hello!"));
+
+// Handle stop signals
+process.once("SIGINT", () => bot.stop());
+process.once("SIGTERM", () => bot.stop());
+
+bot.start();
+```
+
+## Allowed Updates
+
+Control which updates your bot receives:
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message", (ctx) => ctx.reply("Got a message!"));
+
+// Only receive messages and callback queries
+bot.start({
+  allowed_updates: ["message", "callback_query"],
+});
+```
+
+<Note>
+If you don't specify `allowed_updates`, Telegram will send all update types except `chat_member`, `message_reaction`, and `message_reaction_count`.
+</Note>
+
+### Available Update Types
+
+- `message` - New incoming message
+- `edited_message` - Message was edited
+- `channel_post` - New channel post
+- `edited_channel_post` - Channel post was edited
+- `business_connection` - Business connection status changed
+- `business_message` - New business message
+- `edited_business_message` - Business message edited
+- `deleted_business_messages` - Business messages deleted
+- `inline_query` - New inline query
+- `chosen_inline_result` - Result of inline query chosen
+- `callback_query` - Callback button pressed
+- `shipping_query` - Shipping query for invoice
+- `pre_checkout_query` - Pre-checkout query for invoice
+- `purchased_paid_media` - Paid media purchased
+- `poll` - Poll state changed
+- `poll_answer` - User changed poll answer
+- `my_chat_member` - Bot's chat member status changed
+- `chat_member` - Chat member status changed
+- `chat_join_request` - User requested to join chat
+- `chat_boost` - Chat boost added
+- `removed_chat_boost` - Chat boost removed
+- `message_reaction` - Message reaction changed
+- `message_reaction_count` - Anonymous reactions changed
+
+## Error Handling
+
+```typescript
+import { Bot, GrammyError, HttpError } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message", (ctx) => ctx.reply("Hello!"));
+
+bot.catch((err) => {
+  const ctx = err.ctx;
+  console.error(`Error while handling update ${ctx.update.update_id}:`);
+  const e = err.error;
+
+  if (e instanceof GrammyError) {
+    console.error("Error in request:", e.description);
+  } else if (e instanceof HttpError) {
+    console.error("Could not contact Telegram:", e);
+  } else {
+    console.error("Unknown error:", e);
+  }
+});
+
+bot.start();
+```
+
+## Startup Callback
+
+Run code when the bot is ready:
+
+```typescript
+bot.start({
+  onStart: (botInfo) => {
+    console.log(`Bot @${botInfo.username} is up and running!`);
+    console.log("Bot ID:", botInfo.id);
+    console.log("Can join groups:", botInfo.can_join_groups);
+    console.log("Can read all group messages:", botInfo.can_read_all_group_messages);
+  },
+});
+```
+
+## Drop Pending Updates
+
+Skip old updates when starting:
+
+```typescript
+// Useful when restarting after downtime
+bot.start({
+  drop_pending_updates: true,
+});
+```
+
+<Warning>
+This permanently deletes all pending updates. Only use this if you're sure you don't need old updates.
+</Warning>
+
+## Long Polling vs Webhooks
+
+<Tabs>
+  <Tab title="Long Polling">
+    **Advantages:**
+    - Simple setup, no server configuration
+    - Works behind firewalls and NAT
+    - No HTTPS certificate required
+    - Great for development
+
+    **Disadvantages:**
+    - Higher latency (up to 30 seconds)
+    - Keeps a connection open
+    - Doesn't scale as well
+    - Not ideal for serverless
+  </Tab>
+  
+  <Tab title="Webhooks">
+    **Advantages:**
+    - Lower latency (instant delivery)
+    - More scalable
+    - Works with serverless platforms
+    - Lower server load
+
+    **Disadvantages:**
+    - Requires public HTTPS endpoint
+    - Needs server configuration
+    - More complex setup
+  </Tab>
+</Tabs>
+
+## Sequential Update Processing
+
+By default, grammY processes updates sequentially:
+
+```typescript
+bot.on("message", async (ctx) => {
+  // This will process one message at a time
+  await ctx.reply("Processing...");
+  await doSlowOperation();
+  await ctx.reply("Done!");
+});
+
+bot.start();
+```
+
+## Concurrent Processing
+
+For better performance with independent updates, use the `run` helper:
+
+```typescript
+import { Bot, run } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.on("message", async (ctx) => {
+  await ctx.reply("Processing...");
+  await doSlowOperation();
+  await ctx.reply("Done!");
+});
+
+// Process updates concurrently
+run(bot);
+```
+
+<Tip>
+Use concurrent processing when updates are independent. Be careful with shared state!
+</Tip>
+
+## Development Setup
+
+Typical development configuration:
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot(process.env.BOT_TOKEN || "");
+
+// Your middleware and handlers
+bot.on("message", (ctx) => ctx.reply("Hello!"));
+
+// Start with development-friendly settings
+if (process.env.NODE_ENV === "development") {
+  bot.start({
+    drop_pending_updates: true,
+    onStart: ({ username }) => console.log(`@${username} started!`),
+  });
+} else {
+  // Use webhooks in production
+  // (webhook setup code)
+}
+
+// Graceful shutdown
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Graceful Shutdown" icon="power-off">
+    Always handle SIGINT/SIGTERM to stop the bot gracefully
+  </Card>
+  <Card title="Use Webhooks in Production" icon="server">
+    Switch to webhooks for better performance in production
+  </Card>
+  <Card title="Set allowed_updates" icon="filter">
+    Only receive update types you need to reduce bandwidth
+  </Card>
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Install an error handler with `bot.catch()` to prevent crashes
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<Accordion title="Bot not receiving updates">
+  - Check if another bot instance is running (only one can receive updates at a time)
+  - Verify your bot token is correct
+  - Make sure no webhook is set: `await bot.api.deleteWebhook()`
+  - Check if you're filtering out updates with `allowed_updates`
+</Accordion>
+
+<Accordion title="Bot stops after a while">
+  - Add error handling with `bot.catch()`
+  - Check for unhandled promise rejections
+  - Make sure your process doesn't exit unexpectedly
+  - Monitor your server's resources
+</Accordion>
+
+<Accordion title="Slow update processing">
+  - Consider using concurrent processing with `run()`
+  - Optimize slow operations
+  - Consider switching to webhooks
+  - Check your network connection
+</Accordion>
+
+## Example: Complete Bot
+
+```typescript
+import { Bot, GrammyError, HttpError } from "grammy";
+
+const bot = new Bot(process.env.BOT_TOKEN!);
+
+// Middleware
+bot.use(async (ctx, next) => {
+  console.log(`Update ${ctx.update.update_id}`);
+  await next();
+});
+
+// Handlers
+bot.command("start", (ctx) => ctx.reply("Welcome!"));
+bot.on("message:text", (ctx) => ctx.reply("Got your message!"));
+
+// Error handler
+bot.catch((err) => {
+  const ctx = err.ctx;
+  console.error(`Error handling update ${ctx.update.update_id}:`);
+  const e = err.error;
+  
+  if (e instanceof GrammyError) {
+    console.error("API Error:", e.description);
+  } else if (e instanceof HttpError) {
+    console.error("Network Error:", e);
+  } else {
+    console.error("Unknown Error:", e);
+    }
+});
+
+// Start with options
+bot.start({
+  allowed_updates: ["message", "callback_query"],
+  drop_pending_updates: true,
+  onStart: ({ username }) => {
+    console.log(`Bot @${username} is running!`);
+  },
+});
+
+// Graceful shutdown
+process.once("SIGINT", () => {
+  console.log("Stopping bot...");
+  bot.stop();
+});
+
+process.once("SIGTERM", () => {
+  console.log("Stopping bot...");
+  bot.stop();
+});
+```
+
+## See Also
+
+- [Webhooks](/advanced/webhooks)
+- [Deployment](/advanced/deployment)
+- [Error Handling](/concepts/error-handling)
+- [Bot API Reference](/api/bot)

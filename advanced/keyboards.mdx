@@ -1,0 +1,293 @@
+---
+title: Keyboards
+description: Build custom and inline keyboards for interactive bot experiences
+icon: keyboard
+---
+
+# Keyboards
+
+Keyboards are one of the most powerful features for bot interaction. grammY provides two types: custom keyboards (shown below the message input) and inline keyboards (shown below messages).
+
+## Custom Keyboards
+
+Custom keyboards replace the user's system keyboard:
+
+```typescript
+import { Bot, Keyboard } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.command("start", async (ctx) => {
+  const keyboard = new Keyboard()
+    .text("✅ Yes").text("❌ No").row()
+    .text("🔙 Back");
+
+  await ctx.reply("Do you want to continue?", {
+    reply_markup: keyboard,
+  });
+});
+```
+
+### Building Custom Keyboards
+
+```typescript
+const keyboard = new Keyboard()
+  // Add buttons in a row
+  .text("Button 1").text("Button 2")
+  // Start a new row
+  .row()
+  .text("Button 3")
+  // Request user's contact
+  .requestContact("Share Contact")
+  // Request user's location
+  .requestLocation("Share Location")
+  // Start new row
+  .row()
+  // Request user to create a poll
+  .requestPoll("Create Poll")
+  // Make keyboard persistent
+  .persistent()
+  // Resize keyboard
+  .resized();
+```
+
+### Keyboard Options
+
+<ParamField path="resized" type="() => Keyboard">
+  Requests clients to resize the keyboard vertically for optimal fit
+</ParamField>
+
+<ParamField path="persistent" type="() => Keyboard">
+  Keeps the keyboard visible even when the user sends a message
+</ParamField>
+
+<ParamField path="selective" type="() => Keyboard">
+  Shows the keyboard only to specific users (those mentioned in the message or replying to the bot)
+</ParamField>
+
+<ParamField path="oneTime" type="() => Keyboard">
+  Hides the keyboard after the user presses a button
+</ParamField>
+
+<ParamField path="placeholder" type="(text: string) => Keyboard">
+  Sets the placeholder text shown in the input field
+</ParamField>
+
+## Inline Keyboards
+
+Inline keyboards are attached to messages and trigger callback queries:
+
+```typescript
+import { Bot, InlineKeyboard } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.command("menu", async (ctx) => {
+  const keyboard = new InlineKeyboard()
+    .text("Option 1", "option-1")
+    .text("Option 2", "option-2")
+    .row()
+    .url("Visit Website", "https://grammy.dev");
+
+  await ctx.reply("Choose an option:", {
+    reply_markup: keyboard,
+  });
+});
+
+// Handle button clicks
+bot.callbackQuery("option-1", async (ctx) => {
+  await ctx.answerCallbackQuery("You chose Option 1!");
+  await ctx.editMessageText("You selected: Option 1");
+});
+```
+
+### Building Inline Keyboards
+
+```typescript
+const keyboard = new InlineKeyboard()
+  // Callback button (sends callback query)
+  .text("Click me", "callback-data")
+  // URL button (opens a link)
+  .url("Open Link", "https://example.com")
+  // Start new row
+  .row()
+  // Web app button
+  .webApp("Open Web App", "https://example.com/app")
+  // Switch to inline query
+  .switchInline("Share")
+  // Switch to inline in current chat
+  .switchInlineCurrent("Search here")
+  // Start new row
+  .row()
+  // Login URL
+  .login("Login", "https://example.com/auth")
+  // Pay button
+  .pay("Pay $5.00");
+```
+
+### Button Types
+
+<Tabs>
+  <Tab title="Callback">
+    ```typescript
+    keyboard.text("Label", "callback_data")
+    ```
+    Sends a callback query to your bot when pressed.
+  </Tab>
+  
+  <Tab title="URL">
+    ```typescript
+    keyboard.url("Visit Site", "https://example.com")
+    ```
+    Opens a URL in the user's browser.
+  </Tab>
+  
+  <Tab title="Web App">
+    ```typescript
+    keyboard.webApp("Open App", "https://example.com/app")
+    ```
+    Opens a Telegram Web App.
+  </Tab>
+  
+  <Tab title="Switch Inline">
+    ```typescript
+    keyboard.switchInline("Share", "query")
+    ```
+    Prompts the user to select a chat and inserts an inline query.
+  </Tab>
+</Tabs>
+
+## Dynamic Keyboards
+
+Generate keyboards based on data:
+
+```typescript
+const items = ["Apple", "Banana", "Cherry", "Date"];
+
+const keyboard = new InlineKeyboard();
+
+items.forEach((item, index) => {
+  keyboard.text(item, `item-${index}`);
+  // Create a new row every 2 items
+  if ((index + 1) % 2 === 0) keyboard.row();
+});
+
+await ctx.reply("Choose a fruit:", { reply_markup: keyboard });
+```
+
+## Removing Keyboards
+
+Remove a custom keyboard:
+
+```typescript
+import { Bot } from "grammy";
+
+const bot = new Bot("YOUR_BOT_TOKEN");
+
+bot.command("remove", async (ctx) => {
+  await ctx.reply("Keyboard removed", {
+    reply_markup: { remove_keyboard: true },
+  });
+});
+```
+
+## Handling Callbacks
+
+```typescript
+// Handle specific callback data
+bot.callbackQuery("button-1", async (ctx) => {
+  await ctx.answerCallbackQuery("Button 1 pressed!");
+});
+
+// Handle callback data patterns
+bot.callbackQuery(/item-\d+/, async (ctx) => {
+  const itemId = ctx.callbackQuery.data.split("-")[1];
+  await ctx.answerCallbackQuery(`You selected item ${itemId}`);
+});
+
+// Handle all callback queries
+bot.on("callback_query:data", async (ctx) => {
+  console.log("Callback data:", ctx.callbackQuery.data);
+  await ctx.answerCallbackQuery();
+});
+```
+
+<Warning>
+Always call `answerCallbackQuery()` within 30 seconds or Telegram will show an error to the user.
+</Warning>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Keep Labels Short" icon="text-size">
+    Button labels should be concise—Telegram truncates long text.
+  </Card>
+  <Card title="Use Meaningful Callbacks" icon="tag">
+    Use descriptive callback data to make your code maintainable.
+  </Card>
+  <Card title="Provide Feedback" icon="comment">
+    Always call `answerCallbackQuery()` to acknowledge button presses.
+  </Card>
+  <Card title="Update Messages" icon="refresh">
+    Use `editMessageText()` or `editMessageReplyMarkup()` to update inline keyboards.
+  </Card>
+</CardGroup>
+
+## Examples
+
+### Pagination
+
+```typescript
+function getPaginationKeyboard(page: number, totalPages: number) {
+  const keyboard = new InlineKeyboard();
+
+  if (page > 0) {
+    keyboard.text("⬅️ Previous", `page-${page - 1}`);
+  }
+  if (page < totalPages - 1) {
+    keyboard.text("➡️ Next", `page-${page + 1}`);
+  }
+
+  return keyboard;
+}
+
+bot.callbackQuery(/page-\d+/, async (ctx) => {
+  const page = parseInt(ctx.callbackQuery.data.split("-")[1]);
+  const keyboard = getPaginationKeyboard(page, 10);
+  
+  await ctx.editMessageText(`Page ${page + 1}`, {
+    reply_markup: keyboard,
+  });
+  await ctx.answerCallbackQuery();
+});
+```
+
+### Confirmation Dialog
+
+```typescript
+bot.command("delete", async (ctx) => {
+  const keyboard = new InlineKeyboard()
+    .text("✅ Confirm", "confirm-delete")
+    .text("❌ Cancel", "cancel-delete");
+
+  await ctx.reply("Are you sure you want to delete?", {
+    reply_markup: keyboard,
+  });
+});
+
+bot.callbackQuery("confirm-delete", async (ctx) => {
+  await ctx.editMessageText("Deleted!");
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("cancel-delete", async (ctx) => {
+  await ctx.editMessageText("Cancelled.");
+  await ctx.answerCallbackQuery();
+});
+```
+
+## See Also
+
+- [Keyboard API Reference](/api/keyboard)
+- [InlineKeyboard API Reference](/api/inline-keyboard)
+- [Built-in Plugins](/plugins/built-in)

@@ -1,0 +1,636 @@
+---
+title: Keyboard
+description: Custom keyboard builder for reply keyboards in Telegram
+icon: keyboard
+---
+
+The `Keyboard` class simplifies building custom reply keyboards (bottom-of-screen keyboards that replace the system keyboard). These keyboards appear when users interact with your bot and send text responses back when buttons are pressed.
+
+## Constructor
+
+Creates a new Keyboard instance.
+
+```typescript
+const keyboard = new Keyboard(keyboard?: KeyboardButton[][])
+```
+
+<ParamField path="keyboard" type="KeyboardButton[][]">
+  Optional two-dimensional array of keyboard buttons. If not provided, starts with an empty keyboard.
+</ParamField>
+
+### Example
+
+```typescript
+import { Keyboard } from 'grammy'
+
+// Empty keyboard
+const keyboard = new Keyboard()
+
+// Pre-initialized keyboard
+const keyboard = new Keyboard([[
+  { text: 'Button 1' },
+  { text: 'Button 2' }
+]])
+```
+
+## Properties
+
+<ResponseField name="keyboard" type="KeyboardButton[][]">
+  The two-dimensional array of buttons that makes up the keyboard (read-only).
+</ResponseField>
+
+<ResponseField name="is_persistent" type="boolean">
+  Requests clients to always show the keyboard when the regular keyboard is hidden. Defaults to `false`.
+</ResponseField>
+
+<ResponseField name="selective" type="boolean">
+  Show the keyboard only to users mentioned in the text of the message object.
+</ResponseField>
+
+<ResponseField name="one_time_keyboard" type="boolean">
+  Hide the keyboard after a button is pressed.
+</ResponseField>
+
+<ResponseField name="resize_keyboard" type="boolean">
+  Resize the keyboard according to its buttons. Usually makes the keyboard smaller.
+</ResponseField>
+
+<ResponseField name="input_field_placeholder" type="string">
+  Placeholder shown in the input field when the keyboard is active.
+</ResponseField>
+
+## Button Methods
+
+These methods add buttons to the keyboard and return `this` for chaining.
+
+### text
+
+Adds a text button that sends its text as a message when pressed.
+
+```typescript
+keyboard.text(text: string, options?: KeyboardButton.CommonButton['style'] | Omit<KeyboardButton.CommonButton, 'text'>): Keyboard
+```
+
+<ParamField path="text" type="string" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="options" type="string | object">
+  Button style (`'primary'`, `'success'`, `'danger'`) or additional button properties
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Simple button')
+  .text('Primary button', 'primary')
+  .text('With icon', { icon_custom_emoji_id: '5368324170671202286' })
+```
+
+### requestUsers
+
+Adds a button that requests users to be shared when pressed.
+
+```typescript
+keyboard.requestUsers(
+  text: string | KeyboardButton.CommonButton,
+  requestId: number,
+  options?: Omit<KeyboardButtonRequestUsers, 'request_id'>
+): Keyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="requestId" type="number" required>
+  A signed 32-bit identifier of the request that will be received back in `users_shared` service message
+</ParamField>
+
+<ParamField path="options" type="object">
+  Additional requirements for user selection
+  
+  <Expandable title="Options properties">
+    <ParamField path="user_is_bot" type="boolean">
+      Pass `true` to request bots, `false` for regular users
+    </ParamField>
+    
+    <ParamField path="user_is_premium" type="boolean">
+      Pass `true` to request premium users
+    </ParamField>
+    
+    <ParamField path="max_quantity" type="number">
+      Maximum number of users to be selected (1-10)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .requestUsers('Select a user', 1)
+  .requestUsers('Select up to 5 bots', 2, {
+    user_is_bot: true,
+    max_quantity: 5
+  })
+```
+
+### requestChat
+
+Adds a button that requests a chat to be shared when pressed.
+
+```typescript
+keyboard.requestChat(
+  text: string | KeyboardButton.CommonButton,
+  requestId: number,
+  options?: Omit<KeyboardButtonRequestChat, 'request_id'>
+): Keyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="requestId" type="number" required>
+  A signed 32-bit identifier of the request that will be received back in `chat_shared` service message
+</ParamField>
+
+<ParamField path="options" type="object">
+  Requirements for chat selection. Defaults to `{ chat_is_channel: false }`.
+  
+  <Expandable title="Options properties">
+    <ParamField path="chat_is_channel" type="boolean" required>
+      Pass `true` to request a channel, `false` for a group or supergroup
+    </ParamField>
+    
+    <ParamField path="chat_is_forum" type="boolean">
+      Pass `true` to request a forum supergroup
+    </ParamField>
+    
+    <ParamField path="chat_has_username" type="boolean">
+      Pass `true` to request a chat with a username
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .requestChat('Select a group', 1, { chat_is_channel: false })
+  .requestChat('Select a channel', 2, { chat_is_channel: true })
+```
+
+### requestContact
+
+Adds a button that requests the user's phone number as a contact.
+
+```typescript
+keyboard.requestContact(text: string | KeyboardButton.CommonButton): Keyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .requestContact('Share phone number')
+```
+
+### requestLocation
+
+Adds a button that requests the user's current location.
+
+```typescript
+keyboard.requestLocation(text: string | KeyboardButton.CommonButton): Keyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .requestLocation('Share location')
+```
+
+### requestPoll
+
+Adds a button that requests the user to create and send a poll.
+
+```typescript
+keyboard.requestPoll(
+  text: string | KeyboardButton.CommonButton,
+  type?: 'quiz' | 'regular'
+): Keyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="type" type="'quiz' | 'regular'">
+  Type of poll allowed. Omit to allow any type.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .requestPoll('Create poll')
+  .requestPoll('Create quiz', 'quiz')
+```
+
+### webApp
+
+Adds a button that opens a Web App.
+
+```typescript
+keyboard.webApp(text: string | KeyboardButton.CommonButton, url: string): Keyboard
+```
+
+<ParamField path="text" type="string | object" required>
+  The button text to display
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  HTTPS URL of the Web App to be opened
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .webApp('Open App', 'https://example.com/webapp')
+```
+
+## Styling Methods
+
+These methods modify the last added button.
+
+### style
+
+Applies a style to the last added button.
+
+```typescript
+keyboard.style(style: 'primary' | 'success' | 'danger'): Keyboard
+```
+
+<ParamField path="style" type="'primary' | 'success' | 'danger'" required>
+  Button style: `'primary'` (blue), `'success'` (green), or `'danger'` (red)
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Delete').style('danger')
+  .text('Confirm').style('success')
+```
+
+### danger
+
+Applies danger (red) style. Alias for `.style('danger')`.
+
+```typescript
+keyboard.danger(): Keyboard
+```
+
+### success
+
+Applies success (green) style. Alias for `.style('success')`.
+
+```typescript
+keyboard.success(): Keyboard
+```
+
+### primary
+
+Applies primary (blue) style. Alias for `.style('primary')`.
+
+```typescript
+keyboard.primary(): Keyboard
+```
+
+### icon
+
+Adds a custom emoji icon to the last added button.
+
+```typescript
+keyboard.icon(icon: string): Keyboard
+```
+
+<ParamField path="icon" type="string" required>
+  Unique identifier of the custom emoji
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Home').icon('5368324170671202286')
+```
+
+## Layout Methods
+
+### row
+
+Adds a line break to start a new row of buttons.
+
+```typescript
+keyboard.row(...buttons: KeyboardButton[]): Keyboard
+```
+
+<ParamField path="buttons" type="KeyboardButton[]">
+  Optional buttons to add to the new row
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('A').text('B').row()
+  .text('C').text('D')
+
+// Layout:
+// [A] [B]
+// [C] [D]
+```
+
+### add
+
+Adds pre-constructed button objects to the current row.
+
+```typescript
+keyboard.add(...buttons: KeyboardButton[]): Keyboard
+```
+
+<ParamField path="buttons" type="KeyboardButton[]" required>
+  Button objects to add
+</ParamField>
+
+## Transformation Methods
+
+### toTransposed
+
+Creates a new keyboard with rows and columns flipped.
+
+```typescript
+keyboard.toTransposed(): Keyboard
+```
+
+**Example:**
+
+```typescript
+const original = new Keyboard()
+  .text('A').text('B').row()
+  .text('C').text('D')
+
+const transposed = original.toTransposed()
+// Original:    Transposed:
+// [A] [B]      [A] [C]
+// [C] [D]      [B] [D]
+```
+
+### toFlowed
+
+Creates a new keyboard with buttons reflowed into a given number of columns.
+
+```typescript
+keyboard.toFlowed(columns: number, options?: { fillLastRow?: boolean }): Keyboard
+```
+
+<ParamField path="columns" type="number" required>
+  Maximum number of buttons per row
+</ParamField>
+
+<ParamField path="options" type="object">
+  <Expandable title="Options properties">
+    <ParamField path="fillLastRow" type="boolean">
+      Set to `true` to completely fill up the last row
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('A').text('B').text('C')
+  .text('D').text('E')
+
+const flowed = keyboard.toFlowed(2)
+// [A] [B]
+// [C] [D]
+// [E]
+```
+
+### clone
+
+Creates a deep copy of the keyboard.
+
+```typescript
+keyboard.clone(keyboard?: KeyboardButton[][]): Keyboard
+```
+
+<ParamField path="keyboard" type="KeyboardButton[][]">
+  Optional button array to use instead of cloning the current one
+</ParamField>
+
+### append
+
+Appends buttons from other keyboards.
+
+```typescript
+keyboard.append(...sources: (KeyboardButton[][] | Keyboard)[]): Keyboard
+```
+
+<ParamField path="sources" type="Array" required>
+  Keyboards or button arrays to append
+</ParamField>
+
+## Configuration Methods
+
+### persistent
+
+Makes the keyboard persistent (always shown).
+
+```typescript
+keyboard.persistent(isEnabled?: boolean): Keyboard
+```
+
+<ParamField path="isEnabled" type="boolean">
+  Whether to enable persistence. Defaults to `true`.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Button')
+  .persistent()
+```
+
+### selected
+
+Makes the keyboard selective (only shown to mentioned users).
+
+```typescript
+keyboard.selected(isEnabled?: boolean): Keyboard
+```
+
+<ParamField path="isEnabled" type="boolean">
+  Whether to enable selective mode. Defaults to `true`.
+</ParamField>
+
+### oneTime
+
+Makes the keyboard hide after a button is pressed.
+
+```typescript
+keyboard.oneTime(isEnabled?: boolean): Keyboard
+```
+
+<ParamField path="isEnabled" type="boolean">
+  Whether to enable one-time mode. Defaults to `true`.
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Yes').text('No')
+  .oneTime()
+```
+
+### resized
+
+Makes the keyboard resize to fit its buttons.
+
+```typescript
+keyboard.resized(isEnabled?: boolean): Keyboard
+```
+
+<ParamField path="isEnabled" type="boolean">
+  Whether to enable resizing. Defaults to `true`.
+</ParamField>
+
+### placeholder
+
+Sets the input field placeholder text.
+
+```typescript
+keyboard.placeholder(value: string): Keyboard
+```
+
+<ParamField path="value" type="string" required>
+  The placeholder text
+</ParamField>
+
+**Example:**
+
+```typescript
+const keyboard = new Keyboard()
+  .text('Option 1').text('Option 2')
+  .placeholder('Choose an option...')
+```
+
+## Static Methods
+
+### Keyboard.text
+
+Creates a text button without adding it to a keyboard.
+
+```typescript
+Keyboard.text(text: string, options?: KeyboardButton.CommonButton['style'] | Omit<KeyboardButton.CommonButton, 'text'>): KeyboardButton.CommonButton
+```
+
+### Keyboard.from
+
+Creates a keyboard from a two-dimensional button array.
+
+```typescript
+Keyboard.from(source: KeyboardButton[][] | Keyboard): Keyboard
+```
+
+<ParamField path="source" type="KeyboardButton[][] | Keyboard" required>
+  Button array or existing keyboard to copy
+</ParamField>
+
+**Example:**
+
+```typescript
+const data = [['A', 'B'], ['C', 'D']]
+const keyboard = Keyboard.from(data)
+
+// With button objects:
+const button = Keyboard.text('Click me')
+const keyboard = Keyboard.from([[button]])
+```
+
+All other button methods (`requestUsers`, `requestChat`, etc.) also have static equivalents.
+
+## Complete Example
+
+```typescript
+import { Bot, Keyboard } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', async (ctx) => {
+  const keyboard = new Keyboard()
+    .text('👍 Like').text('👎 Dislike').row()
+    .requestLocation('Share location').row()
+    .requestContact('Share contact').row()
+    .webApp('Open App', 'https://example.com')
+    .resized()
+    .oneTime()
+  
+  await ctx.reply('Choose an option:', {
+    reply_markup: keyboard
+  })
+})
+
+// Advanced example with styles
+bot.command('menu', async (ctx) => {
+  const keyboard = new Keyboard()
+    .text('Create').success().row()
+    .text('Edit').primary().text('Delete').danger().row()
+    .text('Cancel')
+    .resized()
+    .persistent()
+  
+  await ctx.reply('Main menu:', {
+    reply_markup: keyboard
+  })
+})
+
+// Using static methods
+bot.command('grid', async (ctx) => {
+  const buttons = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9']
+  ]
+  const keyboard = Keyboard.from(buttons).resized()
+  
+  await ctx.reply('Select a number:', {
+    reply_markup: keyboard
+  })
+})
+
+bot.start()
+```
+
+## See Also
+
+- [InlineKeyboard](/api/inline-keyboard) - Inline keyboards with callback buttons
+- [Keyboards Guide](https://grammy.dev/plugins/keyboard) - Complete keyboard documentation
+- [Telegram Bot API: ReplyKeyboardMarkup](https://core.telegram.org/bots/api#replykeyboardmarkup)

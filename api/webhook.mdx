@@ -1,0 +1,477 @@
+---
+title: webhookCallback
+description: Create webhook handlers for running grammY bots on web servers
+icon: webhook
+---
+
+The `webhookCallback` function creates a callback that integrates your grammY bot with web frameworks for webhook-based deployments. Instead of long polling, webhooks allow Telegram to push updates directly to your server.
+
+## Function Signature
+
+```typescript
+function webhookCallback<C extends Context = Context>(
+  bot: Bot<C>,
+  adapter: FrameworkAdapter | string,
+  webhookOptions?: WebhookOptions
+): RequestHandler
+```
+
+<ParamField path="bot" type="Bot<C>" required>
+  Your bot instance
+</ParamField>
+
+<ParamField path="adapter" type="FrameworkAdapter | string" required>
+  Framework adapter name or custom adapter. Built-in adapters:
+  - `'express'` - Express.js
+  - `'koa'` - Koa
+  - `'fastify'` - Fastify
+  - `'std/http'` - Deno std/http
+  - `'hono'` - Hono
+  - `'oak'` - Oak (Deno)
+  - `'worktop'` - Worktop (Cloudflare Workers)
+  - `'cloudflare'` - Cloudflare Workers
+  - `'aws-lambda'` - AWS Lambda
+  - `'azure'` - Azure Functions
+  - `'vercel'` - Vercel
+</ParamField>
+
+<ParamField path="webhookOptions" type="WebhookOptions">
+  Optional configuration for webhook behavior
+</ParamField>
+
+**Returns:** Framework-specific request handler function
+
+## WebhookOptions
+
+Configuration options for webhook handling.
+
+<ParamField path="onTimeout" type="'throw' | 'return' | ((...args: any[]) => unknown)">
+  Strategy for handling request timeouts:
+  - `'throw'` (default) - Throw an error on timeout
+  - `'return'` - Return successfully on timeout
+  - Function - Custom timeout handler
+</ParamField>
+
+<ParamField path="timeoutMilliseconds" type="number">
+  Request timeout in milliseconds. Defaults to `10000` (10 seconds).
+</ParamField>
+
+<ParamField path="secretToken" type="string">
+  Secret token for validating requests via the `X-Telegram-Bot-Api-Secret-Token` header. Should match the token you set when configuring the webhook.
+</ParamField>
+
+## Basic Usage
+
+### Express
+
+```typescript
+import express from 'express'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', (ctx) => ctx.reply('Hello!'))
+
+const app = express()
+app.use(express.json())
+app.use(webhookCallback(bot, 'express'))
+
+app.listen(3000, () => {
+  console.log('Webhook server running on port 3000')
+})
+```
+
+### Koa
+
+```typescript
+import Koa from 'koa'
+import { bodyParser } from '@koa/bodyparser'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', (ctx) => ctx.reply('Hello!'))
+
+const app = new Koa()
+app.use(bodyParser())
+app.use(webhookCallback(bot, 'koa'))
+
+app.listen(3000)
+```
+
+### Fastify
+
+```typescript
+import Fastify from 'fastify'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', (ctx) => ctx.reply('Hello!'))
+
+const server = Fastify()
+
+server.post('/', webhookCallback(bot, 'fastify'))
+
+await server.listen({ port: 3000 })
+```
+
+### Deno (std/http)
+
+```typescript
+import { serve } from 'https://deno.land/std/http/server.ts'
+import { Bot, webhookCallback } from 'https://deno.land/x/grammy/mod.ts'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', (ctx) => ctx.reply('Hello!'))
+
+const handleUpdate = webhookCallback(bot, 'std/http')
+
+await serve(handleUpdate, { port: 3000 })
+```
+
+### Hono
+
+```typescript
+import { Hono } from 'hono'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', (ctx) => ctx.reply('Hello!'))
+
+const app = new Hono()
+app.post('/', webhookCallback(bot, 'hono'))
+
+export default app
+```
+
+## Advanced Configuration
+
+### With Secret Token
+
+```typescript
+import express from 'express'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+const SECRET_TOKEN = 'my-secret-token'
+
+bot.command('start', (ctx) => ctx.reply('Secure webhook!'))
+
+const app = express()
+app.use(express.json())
+
+app.use(webhookCallback(bot, 'express', {
+  secretToken: SECRET_TOKEN
+}))
+
+app.listen(3000)
+
+// Set webhook with secret token
+await bot.api.setWebhook('https://example.com/webhook', {
+  secret_token: SECRET_TOKEN
+})
+```
+
+### Custom Timeout Handling
+
+```typescript
+import express from 'express'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+const app = express()
+app.use(express.json())
+
+app.use(webhookCallback(bot, 'express', {
+  timeoutMilliseconds: 5000, // 5 second timeout
+  onTimeout: () => {
+    console.log('Request timed out, but continuing...')
+  }
+}))
+
+app.listen(3000)
+```
+
+### Different Paths
+
+```typescript
+import express from 'express'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+const app = express()
+app.use(express.json())
+
+// Handle webhook at /webhook endpoint
+app.post('/webhook', webhookCallback(bot, 'express'))
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' })
+})
+
+app.listen(3000)
+```
+
+## Cloud Platform Examples
+
+### Vercel
+
+```typescript
+// api/webhook.ts
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot(process.env.BOT_TOKEN!)
+
+bot.command('start', (ctx) => ctx.reply('Hello from Vercel!'))
+
+export default webhookCallback(bot, 'std/http')
+```
+
+### Cloudflare Workers
+
+```typescript
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+bot.command('start', (ctx) => ctx.reply('Hello from Cloudflare!'))
+
+export default {
+  async fetch(request: Request) {
+    const handler = webhookCallback(bot, 'cloudflare')
+    return await handler(request)
+  }
+}
+```
+
+### AWS Lambda
+
+```typescript
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot(process.env.BOT_TOKEN!)
+
+bot.command('start', (ctx) => ctx.reply('Hello from Lambda!'))
+
+export const handler = webhookCallback(bot, 'aws-lambda')
+```
+
+### Azure Functions
+
+```typescript
+import { AzureFunction, Context, HttpRequest } from '@azure/functions'
+import { Bot, webhookCallback } from 'grammy'
+
+const bot = new Bot(process.env.BOT_TOKEN!)
+
+bot.command('start', (ctx) => ctx.reply('Hello from Azure!'))
+
+const httpTrigger: AzureFunction = webhookCallback(bot, 'azure')
+
+export default httpTrigger
+```
+
+## Setting Up the Webhook
+
+After deploying your webhook server, configure Telegram to send updates to it:
+
+```typescript
+import { Bot } from 'grammy'
+
+const bot = new Bot('YOUR_BOT_TOKEN')
+
+// Set the webhook URL
+await bot.api.setWebhook('https://example.com/webhook', {
+  allowed_updates: ['message', 'callback_query'],
+  secret_token: 'my-secret-token',
+  drop_pending_updates: true
+})
+
+console.log('Webhook configured!')
+```
+
+## Webhook Best Practices
+
+### 1. Use HTTPS
+
+Telegram requires HTTPS for webhooks (except localhost for testing).
+
+### 2. Validate Requests
+
+Always use a secret token to validate incoming requests:
+
+```typescript
+app.use(webhookCallback(bot, 'express', {
+  secretToken: process.env.SECRET_TOKEN
+}))
+```
+
+### 3. Handle Timeouts
+
+Telegram expects responses within 60 seconds. For long-running operations, acknowledge quickly:
+
+```typescript
+bot.on('message', async (ctx) => {
+  // Start long operation without awaiting
+  processLongTask(ctx).catch(console.error)
+  
+  // Respond quickly
+  await ctx.reply('Processing your request...')
+})
+```
+
+### 4. Error Handling
+
+Implement proper error handling:
+
+```typescript
+bot.catch((err) => {
+  const ctx = err.ctx
+  console.error(`Error while handling update ${ctx.update.update_id}:`)
+  const e = err.error
+  if (e instanceof GrammyError) {
+    console.error('Error in request:', e.description)
+  } else {
+    console.error('Unknown error:', e)
+  }
+})
+```
+
+### 5. Monitor Health
+
+Add health check endpoints:
+
+```typescript
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: Date.now(),
+    botUsername: bot.botInfo?.username
+  })
+})
+```
+
+## Debugging Webhooks
+
+### Check Webhook Info
+
+```typescript
+const info = await bot.api.getWebhookInfo()
+console.log('Webhook URL:', info.url)
+console.log('Pending updates:', info.pending_update_count)
+console.log('Last error:', info.last_error_message)
+```
+
+### Delete Webhook
+
+```typescript
+await bot.api.deleteWebhook({ drop_pending_updates: true })
+console.log('Webhook deleted')
+```
+
+### Test Locally with ngrok
+
+```bash
+# Start your local server
+node server.js
+
+# In another terminal, expose it via ngrok
+ngrok http 3000
+
+# Use the ngrok URL to set your webhook
+```
+
+```typescript
+await bot.api.setWebhook('https://abc123.ngrok.io/webhook')
+```
+
+## Complete Example
+
+```typescript
+import express from 'express'
+import { Bot, webhookCallback, GrammyError, HttpError } from 'grammy'
+
+const bot = new Bot(process.env.BOT_TOKEN!)
+const SECRET_TOKEN = process.env.SECRET_TOKEN!
+const WEBHOOK_URL = process.env.WEBHOOK_URL!
+const PORT = process.env.PORT || 3000
+
+// Bot handlers
+bot.command('start', (ctx) => {
+  ctx.reply('Welcome! I\'m running on webhooks.')
+})
+
+bot.on('message:text', (ctx) => {
+  ctx.reply(`You said: ${ctx.message.text}`)
+})
+
+// Error handling
+bot.catch((err) => {
+  const ctx = err.ctx
+  console.error(`Error while handling update ${ctx.update.update_id}:`)
+  const e = err.error
+  
+  if (e instanceof GrammyError) {
+    console.error('Error in request:', e.description)
+  } else if (e instanceof HttpError) {
+    console.error('Could not contact Telegram:', e)
+  } else {
+    console.error('Unknown error:', e)
+  }
+})
+
+// Express server
+const app = express()
+app.use(express.json())
+
+// Webhook endpoint
+app.post('/webhook', webhookCallback(bot, 'express', {
+  secretToken: SECRET_TOKEN,
+  timeoutMilliseconds: 10000,
+  onTimeout: 'return'
+}))
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() })
+})
+
+// Start server and configure webhook
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`)
+  
+  // Set webhook
+  await bot.api.setWebhook(WEBHOOK_URL, {
+    secret_token: SECRET_TOKEN,
+    allowed_updates: ['message', 'callback_query']
+  })
+  
+  const info = await bot.api.getWebhookInfo()
+  console.log('Webhook configured:', info.url)
+})
+
+// Graceful shutdown
+process.once('SIGINT', async () => {
+  console.log('Deleting webhook...')
+  await bot.api.deleteWebhook()
+  process.exit(0)
+})
+
+process.once('SIGTERM', async () => {
+  console.log('Deleting webhook...')
+  await bot.api.deleteWebhook()
+  process.exit(0)
+})
+```
+
+## See Also
+
+- [Deployment Guide](https://grammy.dev/guide/deployment-types) - Learn about deployment options
+- [Webhooks vs Long Polling](https://grammy.dev/guide/deployment-types#long-polling-vs-webhooks) - Compare deployment methods
+- [Telegram Bot API: setWebhook](https://core.telegram.org/bots/api#setwebhook)

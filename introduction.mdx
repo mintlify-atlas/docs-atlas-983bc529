@@ -1,0 +1,218 @@
+---
+title: Welcome to grammY
+description: The Telegram Bot Framework for Node.js and Deno
+---
+
+<div className="relative isolate overflow-hidden bg-gradient-to-b from-[#3b82f6] to-[#2563eb] dark:from-[#1e3a8a] dark:to-[#1e40af] py-20 sm:py-24">
+  <div className="mx-auto max-w-7xl px-6 lg:px-8">
+    <div className="mx-auto max-w-2xl text-center">
+      <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl">
+        The Telegram Bot Framework
+      </h1>
+      <p className="mt-6 text-lg leading-8 text-gray-100 dark:text-gray-200">
+        Build powerful Telegram bots with ease. grammY makes bot development simple, scalable, and type-safe for both Node.js and Deno.
+      </p>
+      <div className="mt-10 flex items-center justify-center gap-x-6 flex-wrap">
+        <a
+          href="/quickstart"
+          className="rounded-lg bg-white px-6 py-3 text-base font-semibold text-[#3b82f6] shadow-sm hover:bg-gray-100 transition-colors no-underline"
+        >
+          Get Started
+        </a>
+        <a
+          href="/api/bot"
+          className="rounded-lg border border-white/30 bg-white/10 px-6 py-3 text-base font-semibold text-white hover:bg-white/20 transition-colors no-underline"
+        >
+          API Reference
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+    Quick start
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get your first bot running in minutes
+  </p>
+
+  <Steps>
+    <Step title="Install grammY">
+      Install grammY using your preferred package manager:
+
+      <CodeGroup>
+      ```bash npm
+      npm install grammy
+      ```
+
+      ```bash yarn
+      yarn add grammy
+      ```
+
+      ```bash pnpm
+      pnpm add grammy
+      ```
+
+      ```bash deno
+      import { Bot } from "https://deno.land/x/grammy/mod.ts";
+      ```
+      </CodeGroup>
+    </Step>
+
+    <Step title="Create your bot">
+      Visit [@BotFather](https://t.me/BotFather) on Telegram to create a new bot and obtain your bot token.
+
+      <Note>
+        Keep your bot token secure! Never commit it to version control or share it publicly.
+      </Note>
+    </Step>
+
+    <Step title="Write your first bot">
+      Create a simple echo bot that responds to text messages:
+
+      ```typescript bot.ts
+      import { Bot } from "grammy";
+
+      // Create a bot instance
+      const bot = new Bot("YOUR_BOT_TOKEN");
+
+      // Register listeners to handle messages
+      bot.on("message:text", (ctx) => ctx.reply("Echo: " + ctx.message.text));
+
+      // Start the bot (using long polling)
+      bot.start();
+      ```
+
+      Run your bot:
+
+      ```bash
+      node bot.ts
+      ```
+    </Step>
+
+    <Step title="Test your bot">
+      Open Telegram and send a message to your bot. It should echo back whatever you send!
+
+      <Tip>
+        Ready to build something more complex? Check out our [core concepts](/concepts/bot) to learn about middleware, filters, and more.
+      </Tip>
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+    Explore by topic
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Dive deeper into grammY's powerful features
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="Core Concepts" icon="cube" href="/concepts/bot">
+      Learn about the Bot class, Context object, middleware system, and filter queries
+    </Card>
+    <Card title="Keyboards" icon="keyboard" href="/advanced/keyboards">
+      Build custom and inline keyboards to create interactive bot experiences
+    </Card>
+    <Card title="Sessions" icon="database" href="/advanced/sessions">
+      Store user data across conversations with built-in session management
+    </Card>
+    <Card title="Inline Queries" icon="magnifying-glass" href="/advanced/inline-queries">
+      Handle inline queries and let users interact with your bot from any chat
+    </Card>
+    <Card title="Webhooks" icon="webhook" href="/advanced/webhooks">
+      Deploy your bot using webhooks for production environments
+    </Card>
+    <Card title="Plugins" icon="puzzle-piece" href="/plugins/overview">
+      Extend grammY with community plugins or create your own
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+    Why grammY?
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Built for developers who want power and simplicity
+  </p>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Type-safe
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Full TypeScript support with intelligent autocomplete and type inference throughout the framework
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Cross-platform
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Run on Node.js, Deno, or in the browser. Deploy to any serverless platform or traditional server
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Powerful middleware
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Build complex bot logic with a flexible middleware system and powerful filter queries
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Production-ready
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Battle-tested in thousands of bots. Comprehensive error handling and built-in best practices
+      </p>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+    Community & Support
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Join thousands of developers building with grammY
+  </p>
+
+  <CardGroup cols={3}>
+    <Card title="Telegram Chat" icon="paper-plane" href="https://t.me/grammyjs">
+      Ask questions and get help from the community
+    </Card>
+    <Card title="GitHub" icon="github" href="https://github.com/grammyjs/grammY">
+      View source code, report issues, and contribute
+    </Card>
+    <Card title="Examples" icon="code" href="https://github.com/grammyjs/examples">
+      Browse example bots and learn from real implementations
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gradient-to-br from-[#3b82f6]/10 to-[#2563eb]/10 dark:from-[#1e3a8a]/20 dark:to-[#1e40af]/20 p-8 text-center">
+    <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-3">
+      Ready to build your bot?
+    </h2>
+    <p className="text-base text-gray-600 dark:text-gray-400 mb-6 max-w-2xl mx-auto">
+      Start creating powerful Telegram bots with grammY's intuitive API and comprehensive documentation
+    </p>
+    <a
+      href="/quickstart"
+      className="inline-block rounded-lg bg-[#3b82f6] px-6 py-3 text-base font-semibold text-white hover:bg-[#2563eb] transition-colors no-underline"
+    >
+      Get Started
+    </a>
+  </div>
+</div>

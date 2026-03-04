@@ -1,0 +1,192 @@
+---
+title: Sessions
+description: Store user data across conversations with built-in session management
+icon: database
+---
+
+# Sessions
+
+Sessions allow you to store data about users, groups, or chats that persists across multiple bot interactions. grammY provides a simple and powerful session middleware.
+
+## Basic Usage
+
+The session plugin stores data per chat by default. Here's a basic example:
+
+```typescript
+import { Bot, Context, session } from "grammy";
+
+// Define your session structure
+interface SessionData {
+  count: number;
+}
+
+// Add session to context type
+type MyContext = Context & { session: SessionData };
+
+const bot = new Bot<MyContext>("YOUR_BOT_TOKEN");
+
+// Install session middleware with initial data
+bot.use(session({ initial: () => ({ count: 0 }) }));
+
+// Use session in your handlers
+bot.command("count", (ctx) => {
+  ctx.session.count++;
+  return ctx.reply(`You have sent ${ctx.session.count} commands`);
+});
+
+bot.start();
+```
+
+## Storage Adapters
+
+By default, sessions are stored in memory. For production, use a storage adapter:
+
+<Tabs>
+  <Tab title="Memory (Default)">
+    ```typescript
+    bot.use(session({ initial: () => ({ count: 0 }) }));
+    ```
+  </Tab>
+  
+  <Tab title="Custom Storage">
+    ```typescript
+    import { StorageAdapter } from "grammy";
+
+    class MyStorage<T> implements StorageAdapter<T> {
+      async read(key: string): Promise<T | undefined> {
+        // Read from database
+      }
+
+      async write(key: string, value: T): Promise<void> {
+        // Write to database
+      }
+
+      async delete(key: string): Promise<void> {
+        // Delete from database
+      }
+    }
+
+    bot.use(session({
+      initial: () => ({ count: 0 }),
+      storage: new MyStorage(),
+    }));
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+For production bots, consider using official storage adapters like `@grammyjs/storage-mongodb`, `@grammyjs/storage-redis`, or `@grammyjs/storage-postgres`.
+</Note>
+
+## Session Keys
+
+By default, sessions are identified by chat ID. You can customize this:
+
+```typescript
+bot.use(session({
+  initial: () => ({ count: 0 }),
+  // Use user ID instead of chat ID
+  getSessionKey: (ctx) => ctx.from?.id.toString(),
+}));
+```
+
+## Lazy Sessions
+
+For better performance, use lazy sessions that only read when accessed:
+
+```typescript
+import { Bot, Context, lazySession } from "grammy";
+
+bot.use(lazySession({
+  initial: () => ({ count: 0 }),
+  storage: adapter,
+}));
+
+// Session is only loaded when accessed
+bot.on("message", async (ctx) => {
+  const session = await ctx.session;
+  session.count++;
+});
+```
+
+## Multi Sessions
+
+Store different data types with separate keys:
+
+```typescript
+interface UserData {
+  username: string;
+  language: string;
+}
+
+interface ChatData {
+  settings: { muted: boolean };
+}
+
+type MyContext = Context & {
+  session: {
+    user: UserData;
+    chat: ChatData;
+  };
+};
+
+bot.use(session({
+  type: "multi",
+  user: { initial: () => ({ username: "", language: "en" }) },
+  chat: { initial: () => ({ settings: { muted: false } }) },
+}));
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Keep Sessions Small" icon="compress">
+    Store only essential data. Large sessions impact performance.
+  </Card>
+  <Card title="Use Lazy Sessions" icon="bolt">
+    In high-traffic bots, use lazy sessions to avoid unnecessary database reads.
+  </Card>
+  <Card title="Implement Cleanup" icon="broom">
+    Periodically clean up old sessions to save storage space.
+  </Card>
+  <Card title="Validate Data" icon="shield-check">
+    Always validate session data—users can clear their data or migrate between chats.
+  </Card>
+</CardGroup>
+
+## Migration
+
+Handle session schema changes:
+
+```typescript
+interface OldSession {
+  count: number;
+}
+
+interface NewSession {
+  count: number;
+  premium: boolean;
+}
+
+bot.use(session<NewSession>({
+  initial: () => ({ count: 0, premium: false }),
+  storage: {
+    read: async (key) => {
+      const old = await storage.read(key) as OldSession | undefined;
+      if (old && !('premium' in old)) {
+        // Migrate old session
+        return { ...old, premium: false };
+      }
+      return old as NewSession | undefined;
+    },
+    write: storage.write,
+    delete: storage.delete,
+  },
+}));
+```
+
+## See Also
+
+- [Session API Reference](/api/session)
+- [Built-in Plugins](/plugins/built-in)
+- [Context](/concepts/context)

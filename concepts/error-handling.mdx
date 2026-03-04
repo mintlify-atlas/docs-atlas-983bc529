@@ -1,0 +1,585 @@
+---
+title: 'Error Handling'
+description: 'Comprehensive error handling strategies for grammY bots'
+---
+
+Proper error handling is essential for building reliable bots. grammY provides multiple mechanisms to catch and handle errors at different levels.
+
+## Error Types
+
+grammY has three main error types:
+
+### BotError
+
+Thrown when middleware throws an error. Wraps the original error and provides the context:
+
+```typescript
+import { BotError } from 'grammy'
+
+bot.catch((err: BotError) => {
+  console.error('Update:', err.ctx.update.update_id)
+  console.error('Error:', err.error)
+  
+  // Access the original error
+  if (err.error instanceof Error) {
+    console.error('Message:', err.error.message)
+    console.error('Stack:', err.error.stack)
+  }
+})
+```
+
+<ParamField path="error" type="unknown">
+  The original error that was thrown
+</ParamField>
+
+<ParamField path="ctx" type="Context">
+  The context object being processed when the error occurred
+</ParamField>
+
+### GrammyError
+
+Thrown when a Bot API call fails (Telegram returned an error):
+
+```typescript
+import { GrammyError } from 'grammy'
+
+try {
+  await bot.api.sendMessage(chatId, 'Hello')
+} catch (err) {
+  if (err instanceof GrammyError) {
+    console.error('API error:', err.description)
+    console.error('Error code:', err.error_code)
+    console.error('Method:', err.method)
+    console.error('Payload:', err.payload)
+  }
+}
+```
+
+<ParamField path="error_code" type="number">
+  Telegram's error code (e.g., 400, 401, 403, 429)
+</ParamField>
+
+<ParamField path="description" type="string">
+  Human-readable error description from Telegram
+</ParamField>
+
+<ParamField path="parameters" type="ResponseParameters">
+  Additional error parameters (e.g., `retry_after` for rate limits)
+</ParamField>
+
+<ParamField path="method" type="string">
+  The Bot API method that was called
+</ParamField>
+
+<ParamField path="payload" type="object">
+  The parameters that were sent
+</ParamField>
+
+### HttpError
+
+Thrown when the HTTP request to Telegram fails (network error):
+
+```typescript
+import { HttpError } from 'grammy'
+
+try {
+  await bot.api.sendMessage(chatId, 'Hello')
+} catch (err) {
+  if (err instanceof HttpError) {
+    console.error('Network error:', err.error)
+  }
+}
+```
+
+<ParamField path="error" type="unknown">
+  The underlying error (e.g., network timeout, connection refused)
+</ParamField>
+
+## Global Error Handler
+
+Set a global error handler with `bot.catch()`:
+
+```typescript
+bot.catch((err) => {
+  const ctx = err.ctx
+  console.error(`Error while handling update ${ctx.update.update_id}:`)
+  const e = err.error
+  
+  if (e instanceof GrammyError) {
+    console.error('Error in request:', e.description)
+  } else if (e instanceof HttpError) {
+    console.error('Could not contact Telegram:', e)
+  } else {
+    console.error('Unknown error:', e)
+  }
+})
+```
+
+<Warning>
+**Always set an error handler before starting your bot!**
+
+Without an error handler, unhandled errors will crash your bot and stop long polling.
+
+The default error handler will:
+1. Log the error to console
+2. Stop the bot if polling
+3. Re-throw the error
+</Warning>
+
+## Error Boundaries
+
+Error boundaries let you handle errors in specific middleware subtrees:
+
+```typescript
+import { BotError } from 'grammy'
+
+const errorHandler = (err: BotError, next: NextFunction) => {
+  console.error('Boundary caught:', err.error)
+  // Continue execution
+  return next()
+}
+
+// Create a protected section
+const protected = bot.errorBoundary(errorHandler)
+
+protected.on('message', (ctx) => {
+  // Errors here are caught by the boundary
+  throw new Error('This is caught')
+})
+
+// Outside the boundary
+bot.on('callback_query', (ctx) => {
+  // Errors here go to the global handler
+  throw new Error('This goes to bot.catch()')
+})
+```
+
+### Nested Error Boundaries
+
+Error boundaries can be nested:
+
+```typescript
+const outerHandler = (err: BotError, next: NextFunction) => {
+  console.error('Outer boundary:', err.error)
+  return next()
+}
+
+const innerHandler = (err: BotError, next: NextFunction) => {
+  console.error('Inner boundary:', err.error)
+  // Re-throw to outer boundary
+  throw err.error
+}
+
+const outer = bot.errorBoundary(outerHandler)
+const inner = outer.errorBoundary(innerHandler)
+
+inner.on('message', (ctx) => {
+  throw new Error('Caught by inner, then outer')
+})
+```
+
+### Suppressing Errors
+
+Suppress errors by not re-throwing:
+
+```typescript
+const suppress = (err: BotError, next: NextFunction) => {
+  console.error('Suppressed:', err.error)
+  // Don't re-throw - just continue
+  return next()
+}
+
+bot.errorBoundary(suppress).on('message', (ctx) => {
+  throw new Error('This is logged but suppressed')
+  // Downstream middleware still runs
+})
+```
+
+## Common Error Scenarios
+
+### Rate Limiting (Error 429)
+
+```typescript
+import { GrammyError } from 'grammy'
+
+bot.catch(async (err) => {
+  const e = err.error
+  
+  if (e instanceof GrammyError && e.error_code === 429) {
+    const retryAfter = e.parameters.retry_after ?? 60
+    console.error(`Rate limited! Retry after ${retryAfter} seconds`)
+    
+    // Wait and retry
+    await new Promise(resolve => setTimeout(resolve, retryAfter * 1000))
+    
+    // Retry the operation
+    // (You'll need to implement retry logic based on your use case)
+  }
+})
+```
+
+<Note>
+grammY automatically handles rate limiting for `getUpdates` during long polling. This manual handling is only needed for other API calls.
+</Note>
+
+### Unauthorized (Error 401)
+
+```typescript
+if (e instanceof GrammyError && e.error_code === 401) {
+  console.error('Bot token is invalid!')
+  console.error('Check your token with @BotFather')
+  process.exit(1)
+}
+```
+
+### Conflict (Error 409)
+
+```typescript
+if (e instanceof GrammyError && e.error_code === 409) {
+  console.error('Conflict! Bot is running elsewhere')
+  console.error('Only one instance can use long polling at a time')
+  process.exit(1)
+}
+```
+
+### Bad Request (Error 400)
+
+```typescript
+if (e instanceof GrammyError && e.error_code === 400) {
+  console.error('Bad request:', e.description)
+  
+  // Common 400 errors:
+  if (e.description.includes('chat not found')) {
+    console.error('Chat ID is invalid or bot was blocked')
+  } else if (e.description.includes('message is not modified')) {
+    console.error('Trying to edit with same content')
+  } else if (e.description.includes('message to edit not found')) {
+    console.error('Message was deleted')
+  }
+}
+```
+
+### Forbidden (Error 403)
+
+```typescript
+if (e instanceof GrammyError && e.error_code === 403) {
+  console.error('Forbidden:', e.description)
+  
+  if (e.description.includes('bot was blocked')) {
+    console.error('User blocked the bot')
+    // Maybe remove user from database
+  } else if (e.description.includes('not enough rights')) {
+    console.error('Bot lacks permissions')
+  }
+}
+```
+
+## Try-Catch in Middleware
+
+Handle errors locally in middleware:
+
+```typescript
+bot.on('message:text', async (ctx) => {
+  try {
+    await ctx.reply('Processing...')
+    const result = await riskyOperation()
+    await ctx.reply(`Result: ${result}`)
+  } catch (error) {
+    console.error('Operation failed:', error)
+    await ctx.reply('Sorry, something went wrong!')
+  }
+})
+```
+
+<Tip>
+Use try-catch for expected errors that you want to handle locally. Let unexpected errors bubble up to error handlers.
+</Tip>
+
+## Graceful Degradation
+
+Handle errors without stopping the bot:
+
+```typescript
+bot.on('message:photo', async (ctx) => {
+  try {
+    // Try to process the photo
+    await processPhoto(ctx.message.photo)
+    await ctx.reply('Photo processed!')
+  } catch (error) {
+    console.error('Photo processing failed:', error)
+    // Gracefully degrade
+    await ctx.reply(
+      'Sorry, I couldn\'t process your photo. Please try again later.'
+    )
+  }
+})
+```
+
+## Retry Logic
+
+Implement retry logic for transient failures:
+
+```typescript
+import { GrammyError, HttpError } from 'grammy'
+
+async function sendWithRetry(
+  fn: () => Promise<any>,
+  maxRetries = 3
+): Promise<any> {
+  let lastError: any
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      
+      // Don't retry on permanent errors
+      if (error instanceof GrammyError) {
+        if ([400, 401, 403, 404].includes(error.error_code)) {
+          throw error // Permanent error
+        }
+      }
+      
+      // Wait before retry
+      const delay = Math.min(1000 * Math.pow(2, i), 10000)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+  
+  throw lastError
+}
+
+// Usage
+bot.on('message', async (ctx) => {
+  await sendWithRetry(() => 
+    ctx.reply('This will retry on transient errors')
+  )
+})
+```
+
+## Error Monitoring
+
+Integrate with error monitoring services:
+
+```typescript
+import * as Sentry from '@sentry/node'
+
+Sentry.init({ dsn: 'your-dsn' })
+
+bot.catch((err) => {
+  // Send to Sentry
+  Sentry.captureException(err.error, {
+    contexts: {
+      update: {
+        update_id: err.ctx.update.update_id,
+        type: Object.keys(err.ctx.update)[1]
+      }
+    },
+    user: {
+      id: err.ctx.from?.id?.toString(),
+      username: err.ctx.from?.username
+    }
+  })
+  
+  console.error('Error logged to Sentry')
+})
+```
+
+## Timeout Handling
+
+Handle long-running operations with timeouts:
+
+```typescript
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), timeoutMs)
+    )
+  ])
+}
+
+bot.on('message', async (ctx) => {
+  try {
+    const result = await withTimeout(
+      longRunningOperation(),
+      5000 // 5 second timeout
+    )
+    await ctx.reply(`Done: ${result}`)
+  } catch (error) {
+    if (error.message === 'Timeout') {
+      await ctx.reply('Operation timed out. Please try again.')
+    } else {
+      throw error // Re-throw other errors
+    }
+  }
+})
+```
+
+## Logging Best Practices
+
+Structured error logging:
+
+```typescript
+import { BotError, GrammyError, HttpError } from 'grammy'
+
+bot.catch((err: BotError) => {
+  const ctx = err.ctx
+  const error = err.error
+  
+  const logData = {
+    timestamp: new Date().toISOString(),
+    updateId: ctx.update.update_id,
+    userId: ctx.from?.id,
+    chatId: ctx.chat?.id,
+    errorType: error.constructor.name,
+  }
+  
+  if (error instanceof GrammyError) {
+    console.error('API Error:', {
+      ...logData,
+      errorCode: error.error_code,
+      description: error.description,
+      method: error.method,
+      payload: error.payload
+    })
+  } else if (error instanceof HttpError) {
+    console.error('Network Error:', {
+      ...logData,
+      error: error.error
+    })
+  } else {
+    console.error('Unknown Error:', {
+      ...logData,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
+  }
+})
+```
+
+## User-Friendly Error Messages
+
+Provide helpful feedback to users:
+
+```typescript
+bot.catch(async (err) => {
+  const ctx = err.ctx
+  const error = err.error
+  
+  let userMessage = 'Sorry, something went wrong. Please try again later.'
+  
+  if (error instanceof GrammyError) {
+    if (error.error_code === 400) {
+      userMessage = 'Invalid command or parameters. Please check and try again.'
+    } else if (error.error_code === 429) {
+      const retryAfter = error.parameters.retry_after ?? 60
+      userMessage = `Too many requests. Please wait ${retryAfter} seconds.`
+    }
+  } else if (error instanceof HttpError) {
+    userMessage = 'Network error. Please check your connection and try again.'
+  }
+  
+  try {
+    if (ctx.chat) {
+      await ctx.reply(userMessage)
+    }
+  } catch (replyError) {
+    console.error('Could not send error message to user:', replyError)
+  }
+})
+```
+
+## Development vs Production
+
+Different error handling for environments:
+
+```typescript
+const isDevelopment = process.env.NODE_ENV === 'development'
+
+bot.catch((err) => {
+  if (isDevelopment) {
+    // Verbose logging in development
+    console.error('Full error details:', err)
+    console.error('Context:', JSON.stringify(err.ctx.update, null, 2))
+  } else {
+    // Minimal logging in production
+    console.error('Error:', err.error)
+    
+    // Send to monitoring service
+    errorMonitoring.report(err)
+  }
+})
+```
+
+## Best Practices
+
+<Tip>
+**Set Error Handler First**
+
+```typescript
+// FIRST: Set error handler
+bot.catch((err) => { /* ... */ })
+
+// THEN: Register middleware
+bot.command('start', ...)
+bot.on('message', ...)
+
+// FINALLY: Start bot
+await bot.start()
+```
+</Tip>
+
+<Tip>
+**Don't Swallow Errors**
+
+Always log errors, even if you handle them:
+```typescript
+try {
+  await riskyOperation()
+} catch (error) {
+  console.error('Expected error:', error) // Log it!
+  // Then handle it
+  await ctx.reply('Operation failed')
+}
+```
+</Tip>
+
+<Warning>
+**Avoid Errors in Error Handlers**
+
+Error handlers should be rock-solid:
+```typescript
+bot.catch(async (err) => {
+  try {
+    // Safe error handling
+    await logError(err)
+  } catch (handlerError) {
+    // Last resort - console only
+    console.error('Error handler failed:', handlerError)
+    console.error('Original error:', err)
+  }
+})
+```
+</Warning>
+
+<Tip>
+**Test Error Paths**
+
+Test that your error handling works:
+```typescript
+bot.command('test-error', (ctx) => {
+  throw new Error('Test error')
+})
+```
+</Tip>
+
+## Related
+
+- [Bot](/concepts/bot) - Bot error handler setup
+- [Middleware](/concepts/middleware) - Error boundaries
+- [Context](/concepts/context) - Context in error handlers
