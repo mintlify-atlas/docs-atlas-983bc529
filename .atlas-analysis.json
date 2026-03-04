@@ -1,0 +1,122 @@
+{
+  "projectType": "framework",
+  "projectName": "grammY",
+  "projectDescription": "The Telegram Bot Framework for Node.js and Deno",
+  "theme": "palm",
+  "primaryColor": "#3b82f6",
+  "lightColor": "#60a5fa",
+  "darkColor": "#2563eb",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/bot",
+              "concepts/context",
+              "concepts/middleware",
+              "concepts/updates",
+              "concepts/filter-queries",
+              "concepts/error-handling"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/sessions",
+              "advanced/keyboards",
+              "advanced/inline-queries",
+              "advanced/webhooks",
+              "advanced/long-polling",
+              "advanced/deployment"
+            ]
+          },
+          {
+            "group": "Plugins",
+            "pages": [
+              "plugins/overview",
+              "plugins/built-in",
+              "plugins/creating-plugins"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/bot",
+              "api/context",
+              "api/composer",
+              "api/api-client"
+            ]
+          },
+          {
+            "group": "Convenience APIs",
+            "pages": [
+              "api/keyboard",
+              "api/inline-keyboard",
+              "api/session",
+              "api/input-file",
+              "api/webhook"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types",
+              "api/filter-types",
+              "api/middleware-types"
+            ]
+          },
+          {
+            "group": "Error Handling",
+            "pages": [
+              "api/errors"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Type-safe middleware system",
+    "Powerful filter queries for handling updates",
+    "Built-in session management",
+    "Flexible keyboard builders",
+    "Inline query support",
+    "Webhook and long polling support",
+    "Plugin ecosystem",
+    "Cross-platform (Node.js, Deno, and Web)",
+    "Comprehensive error handling",
+    "Full Telegram Bot API coverage"
+  ],
+  "publicApiSurface": [
+    "Bot",
+    "Context",
+    "Composer",
+    "Api",
+    "Keyboard",
+    "InlineKeyboard",
+    "InputFile",
+    "session",
+    "webhookCallback",
+    "BotError",
+    "GrammyError",
+    "HttpError",
+    "Filter",
+    "matchFilter"
+  ]
+}
